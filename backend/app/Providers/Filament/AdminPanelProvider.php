@@ -31,7 +31,17 @@ class AdminPanelProvider extends PanelProvider
             ->colors([
                 'primary' => Color::Amber,
             ])
-            ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
+            ->resources([
+                \App\Filament\Resources\AffiliateResource::class,
+                \App\Filament\Resources\ClickResource::class,
+                \App\Filament\Resources\CommissionResource::class,
+                \App\Filament\Resources\NotificationLogResource::class,
+                \App\Filament\Resources\OrderResource::class,
+                \App\Filament\Resources\ProductResource::class,
+                \App\Filament\Resources\TrackingLogResource::class,
+                \App\Filament\Resources\UserResource::class,
+                \App\Filament\Resources\WithdrawalResource::class,
+            ])
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([
                 Pages\Dashboard::class,
