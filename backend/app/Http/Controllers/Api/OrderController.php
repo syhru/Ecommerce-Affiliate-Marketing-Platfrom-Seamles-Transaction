@@ -22,9 +22,24 @@ class OrderController extends Controller
     public function store(CreateOrderRequest $request): JsonResponse
     {
         $data = $request->validated();
-        if (! isset($data['affiliate_code'])) {
-            $data['affiliate_code'] = $request->cookie('affiliate_ref');
+
+        // Resolve affiliate code from multiple sources (fallback chain)
+        $affiliateCode = $request->input('affiliate_code')
+            ?? $request->cookie('tdr_affiliate_ref')
+            ?? $request->header('X-Affiliate-Code');
+
+        // Inject affiliate_code into every item that doesn't already have one
+        if (! empty($affiliateCode) && isset($data['items'])) {
+            foreach ($data['items'] as &$item) {
+                if (empty($item['affiliate_code'])) {
+                    $item['affiliate_code'] = $affiliateCode;
+                }
+            }
+            unset($item);
         }
+
+        // Also keep it at top level for single-product format compatibility
+        $data['affiliate_code'] = $affiliateCode;
 
         $order = $this->orderService->createOrder($data, $request->user()->id);
 

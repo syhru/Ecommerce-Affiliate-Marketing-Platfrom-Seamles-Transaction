@@ -16,7 +16,8 @@ class OrderService
         protected MidtransService    $midtrans,
         protected AffiliateService   $affiliate,
         protected NotificationService $notification,
-    ) {}
+    ) {
+    }
 
     /**
      * @param array $data   Validated payload
@@ -25,6 +26,16 @@ class OrderService
     public function createOrder(array $data, int $customerId): Order
     {
         return DB::transaction(function () use ($data, $customerId) {
+
+            // DEBUG: log incoming affiliate data
+            \Illuminate\Support\Facades\Log::info('OrderService::createOrder - incoming data', [
+                'customer_id' => $customerId,
+                'top_level_affiliate_code' => $data['affiliate_code'] ?? 'NOT SET',
+                'items' => collect($data['items'] ?? [])->map(fn ($i) => [
+                    'product_id' => $i['product_id'] ?? '?',
+                    'affiliate_code' => $i['affiliate_code'] ?? 'NOT SET',
+                ])->toArray(),
+            ]);
 
             if (isset($data['product_id'])) {
                 $rawItems = [[
@@ -55,9 +66,33 @@ class OrderService
                 $affCode     = $raw['affiliate_code'] ?? null;
 
                 if (! empty($affCode)) {
-                    $affProfile = AffiliateProfile::where('referral_code', $affCode)
+                    \Illuminate\Support\Facades\Log::info('OrderService - resolving affiliate', [
+                        'affiliate_code_raw' => $affCode,
+                        'affiliate_code_trimmed' => trim($affCode),
+                    ]);
+
+                    // Primary lookup: by referral_code in affiliate_profiles
+                    $affProfile = AffiliateProfile::where('referral_code', trim($affCode))
                         ->where('status', 'active')
                         ->first();
+
+                    // Fallback lookup: by user name -> then fetch their affiliate profile
+                    if (! $affProfile) {
+                        $affUser = \App\Models\User::where('name', trim($affCode))->first();
+                        if ($affUser) {
+                            $affProfile = AffiliateProfile::where('user_id', $affUser->id)
+                                ->where('status', 'active')
+                                ->first();
+                        }
+                    }
+
+                    \Illuminate\Support\Facades\Log::info('OrderService - affiliate lookup result', [
+                        'affiliate_code' => $affCode,
+                        'found' => $affProfile ? true : false,
+                        'profile_id' => $affProfile?->id,
+                        'user_id' => $affProfile?->user_id,
+                        'referral_code_in_db' => $affProfile?->referral_code,
+                    ]);
 
                     if ($affProfile) {
                         $affId      = $affProfile->user_id;
@@ -91,7 +126,7 @@ class OrderService
                 'customer_id'      => $customerId,
                 'affiliate_id'     => $primaryAffId,
                 'subtotal'         => $subtotal,
-                'commission_amount'=> $commTotal,
+                'commission_amount' => $commTotal,
                 'shipping_cost'    => $shippingCost,
                 'total_amount'     => $totalAmount,
                 'status'           => 'pending',
@@ -140,7 +175,7 @@ class OrderService
                 'item_details' => $midtransItems,
                 'callbacks' => [
                     'finish'   => url('/checkout/success?order_number=' . $order->order_number),
-                    'unfinish' => url('/checkout'),  
+                    'unfinish' => url('/checkout'),
                     'error'    => url('/checkout/failed'),
                 ],
             ]);
@@ -160,7 +195,7 @@ class OrderService
     public function checkAndVerifyPayment(Order $order): bool
     {
         if ($order->payment_verified_at) {
-            return true; 
+            return true;
         }
 
         $result = $this->midtrans->getTransactionStatus($order->order_number);

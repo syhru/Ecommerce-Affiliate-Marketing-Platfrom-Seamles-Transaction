@@ -119,15 +119,19 @@ export default function CheckoutPage() {
         form.shipping_postal_code
       ].filter(Boolean).join(', ');
 
+      // Read the latest affiliate referral code from localStorage
+      const affiliateRef = localStorage.getItem('tdr_affiliate_ref') || null;
+
       const reqPayload = {
         shipping_courier: form.shipping_courier,
         shipping_address: combinedAddress,
         notes: form.notes,
         payment_method: 'midtrans',
+        affiliate_code: affiliateRef,
         items: cart.map(item => ({
           product_id: item.product_id,
           quantity: item.quantity,
-          affiliate_code: item.affiliate_code || null
+          affiliate_code: affiliateRef || item.affiliate_code || null
         }))
       };
 

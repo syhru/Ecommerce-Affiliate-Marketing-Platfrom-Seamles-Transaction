@@ -120,7 +120,7 @@ export default function AffiliateDashboardPage() {
 
   // 2. Action Handlers
   const handleCopyLink = () => {
-    const refCode = `AFF${user?.id}X8`; 
+    const refCode = user?.affiliate_profile?.referral_code || '';
     const link = selectedProductSlug 
       ? `${window.location.origin}/products/${selectedProductSlug}?ref=${refCode}`
       : `${window.location.origin}/shop?ref=${refCode}`;
@@ -263,8 +263,8 @@ export default function AffiliateDashboardPage() {
 
                     <div className="flex-1 truncate bg-slate-50 border border-slate-200 text-slate-700 text-xs px-4 py-3 rounded-xl font-mono shadow-inner font-semibold transition-all">
                       {selectedProductSlug 
-                        ? `${window.location.origin}/products/${selectedProductSlug}?ref=AFF${user.id}X8`
-                        : `${window.location.origin}/shop?ref=AFF${user.id}X8`}
+                        ? `${window.location.origin}/products/${selectedProductSlug}?ref=${user?.affiliate_profile?.referral_code || ''}`
+                        : `${window.location.origin}/shop?ref=${user?.affiliate_profile?.referral_code || ''}`}
                     </div>
                     <Button 
                       variant="outline" 

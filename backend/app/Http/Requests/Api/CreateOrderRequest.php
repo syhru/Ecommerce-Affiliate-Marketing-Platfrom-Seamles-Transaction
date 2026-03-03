@@ -19,6 +19,7 @@ class CreateOrderRequest extends FormRequest
             'shipping_cost'             => ['nullable', 'numeric', 'min:0'],
             'notes'                     => ['nullable', 'string', 'max:1000'],
             'payment_method'            => ['required', 'string', 'max:50'],
+            'affiliate_code'            => ['nullable', 'string', 'max:50'],
 
             'items'                     => ['required', 'array', 'min:1'],
             'items.*.product_id'        => ['required', 'integer', 'exists:products,id'],

@@ -32,7 +32,7 @@ class OrderResource extends Resource
                             ->schema([
                                 Components\TextEntry::make('customer.name')->label('Nama'),
                                 Components\TextEntry::make('customer.email')->label('Email'),
-                                Components\TextEntry::make('affiliate.name')->label('Affiliate')->placeholder('—'),
+                                Components\TextEntry::make('affiliate.name')->label('Affiliate')->placeholder('Direct Order'),
                             ])->columnSpan(1),
 
                         Components\Section::make('Pembayaran')
@@ -71,7 +71,7 @@ class OrderResource extends Resource
                             ->schema([
                                 Components\TextEntry::make('product.name')->label('Produk')->weight(FontWeight::Medium),
                                 Components\TextEntry::make('quantity')->label('QTY'),
-                                Components\TextEntry::make('price')->money('IDR', locale: 'id')->label('Harga'),
+                                Components\TextEntry::make('product_price')->money('IDR', locale: 'id')->label('Harga'),
                                 Components\TextEntry::make('subtotal')->money('IDR', locale: 'id')->label('Subtotal')->weight(FontWeight::Bold),
                             ])
                             ->columns(4),

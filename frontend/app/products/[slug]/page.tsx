@@ -8,7 +8,7 @@ import { apiGet } from '@/src/lib/api';
 import type { Product } from '@/src/types/product';
 import { Minus, Plus, Share2, ShoppingCart, Zap } from 'lucide-react';
 import Link from 'next/link';
-import { notFound, useRouter } from 'next/navigation';
+import { notFound, useRouter, useSearchParams } from 'next/navigation';
 import { use, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -17,6 +17,7 @@ const formatRupiah = (n: number) =>
 
 export default function ProductDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { slug } = use(params);
 
   const [product, setProduct] = useState<Product | null>(null);
@@ -25,6 +26,19 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
   
   const [quantity, setQuantity] = useState(1);
   const [isAddingToCart, setIsAddingToCart] = useState(false);
+
+  // ── Capture affiliate referral code from URL ──
+  useEffect(() => {
+    const ref = searchParams.get('ref');
+    if (ref) {
+      localStorage.setItem('tdr_affiliate_ref', ref);
+    }
+  }, [searchParams]);
+
+  const getAffiliateCode = (): string | null => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('tdr_affiliate_ref');
+  };
 
   useEffect(() => {
     async function fetchProduct() {
@@ -89,7 +103,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
           thumbnail_url: productObj.thumbnailUrl,
           stock: productObj.stock,
           quantity: qty,
-          affiliate_code: null
+          affiliate_code: getAffiliateCode()
         });
       }
 
@@ -138,7 +152,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
       thumbnail_url: product.thumbnailUrl,
       stock: product.stock,
       quantity: quantity,
-      affiliate_code: null
+      affiliate_code: getAffiliateCode()
     };
 
     localStorage.setItem('tdr_buy_now', JSON.stringify([buyNowItem]));

@@ -192,6 +192,19 @@ function ShopContent() {
   const [meta,      setMeta     ] = useState<PaginatedMeta>({ current_page: 1, last_page: 1, per_page: 12, total: 0, from: 0, to: 0 });
   const [isLoading, setIsLoading] = useState(true);
 
+  // ── Capture affiliate referral code from URL ──────────────
+  useEffect(() => {
+    const ref = searchParams.get('ref');
+    if (ref) {
+      localStorage.setItem('tdr_affiliate_ref', ref);
+    }
+  }, [searchParams]);
+
+  const getAffiliateCode = (): string | null => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('tdr_affiliate_ref');
+  };
+
   // ── Fetch ──────────────────────────────────────────────────
   const fetchProducts = useCallback(async (q: string, category: CategoryFilter, sort: SortOption, page: number) => {
     setIsLoading(true);
@@ -261,7 +274,7 @@ function ShopContent() {
                 thumbnail_url: product.thumbnailUrl,
                 stock: product.stock,
                 quantity: 1,
-                affiliate_code: null
+                affiliate_code: getAffiliateCode()
             });
         }
         // Simpan data array keranjang terbaru ke Storage
@@ -302,7 +315,7 @@ function ShopContent() {
       thumbnail_url: product.thumbnailUrl,
       stock: product.stock,
       quantity: 1,
-      affiliate_code: null
+      affiliate_code: getAffiliateCode()
     };
 
     localStorage.setItem('tdr_buy_now', JSON.stringify([buyNowItem]));
