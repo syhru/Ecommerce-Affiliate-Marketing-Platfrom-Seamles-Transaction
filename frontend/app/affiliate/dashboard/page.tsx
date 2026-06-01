@@ -248,7 +248,8 @@ export default function AffiliateDashboardPage() {
 
                     <div className="space-y-1.5">
                       <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Pilih Produk Spesifik (Opsional)</label>
-                      <select 
+                        <select 
+                          title='produk'
                         value={selectedProductSlug}
                         onChange={(e) => setSelectedProductSlug(e.target.value)}
                         className="flex h-10 w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 ring-offset-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-colors font-medium appearance-none cursor-pointer shadow-sm"
