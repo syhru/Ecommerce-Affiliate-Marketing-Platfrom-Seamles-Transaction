@@ -33,11 +33,17 @@ class MidtransWebhookController extends Controller
         $orderNumber   = $payload['order_id'] ?? '';
         $transactionId = $payload['transaction_id'] ?? '';
 
-        // Only process confirmed / settled payments
+        // A successful, settled payment.
         $isSettled = in_array($status, ['settlement', 'capture'])
             && ($fraudStatus === 'accept' || $fraudStatus === '');
 
-        if (! $isSettled) {
+        // A final-failed payment: denied, cancelled, expired, failed,
+        // or a fraud-denied capture (credit card flagged as fraud).
+        $isFailed = in_array($status, ['deny', 'cancel', 'expire', 'failure'])
+            || ($status === 'capture' && $fraudStatus === 'deny');
+
+        // Anything else (e.g. 'pending') is a no-op: order stays pending.
+        if (! $isSettled && ! $isFailed) {
             Log::info('Midtrans webhook: skipped status', compact('status', 'orderNumber'));
             return response()->json(['message' => 'Ignored.']);
         }
@@ -47,6 +53,17 @@ class MidtransWebhookController extends Controller
         if (! $order) {
             Log::error('Midtrans webhook: order not found', ['order_number' => $orderNumber]);
             return response()->json(['message' => 'Order not found.'], 404);
+        }
+
+        if ($isFailed) {
+            try {
+                $this->orderService->cancelFailedPayment($order, $status);
+            } catch (\Throwable $e) {
+                Log::error('Midtrans webhook: cancelFailedPayment failed', ['error' => $e->getMessage()]);
+                return response()->json(['message' => 'Internal error.'], 500);
+            }
+
+            return response()->json(['message' => 'OK']);
         }
 
         if ($order->payment_verified_at) {

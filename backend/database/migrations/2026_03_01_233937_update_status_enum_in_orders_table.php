@@ -11,6 +11,13 @@ return new class () extends Migration {
      */
     public function up(): void
     {
+        // These raw ALTER TABLE ... CONSTRAINT statements are Postgres-specific.
+        // Other drivers (e.g. the SQLite used in tests) don't create/enforce a
+        // named check constraint for enum() columns, so this is a safe no-op there.
+        if (DB::getDriverName() !== 'pgsql') {
+            return;
+        }
+
         // 1. Drop the existing Postgres check constraint on the status column
         DB::statement('ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check');
 
@@ -26,6 +33,10 @@ return new class () extends Migration {
      */
     public function down(): void
     {
+        if (DB::getDriverName() !== 'pgsql') {
+            return;
+        }
+
         DB::statement('ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check');
         DB::statement("ALTER TABLE orders ADD CONSTRAINT orders_status_check CHECK (status::text = ANY (ARRAY['pending'::character varying, 'verified'::character varying, 'processing'::character varying, 'shipped'::character varying, 'completed'::character varying, 'cancelled'::character varying]::text[]))");
     }

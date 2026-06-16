@@ -32,6 +32,10 @@ Route::get('/products/{slug}', [ProductController::class, 'show']);
 // Midtrans webhook (no CSRF, no auth)
 Route::post('/webhooks/midtrans', [MidtransWebhookController::class, 'handle']);
 
+// Admin SSO bridge — generate one-time token (admin only, butuh login Sanctum)
+Route::post('/admin/filament-sso', [\App\Http\Controllers\AdminSsoController::class, 'generate'])
+    ->middleware('auth:sanctum');
+
 
 // auth required routes
 Route::middleware(['auth:sanctum', 'verified'])->group(function () {

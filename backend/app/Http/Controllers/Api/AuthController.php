@@ -15,6 +15,9 @@ use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
 {
+    /** Masa berlaku token akses API (hari). Token kedaluwarsa otomatis sebagai backstop keamanan. */
+    private const TOKEN_TTL_DAYS = 7;
+
     /** POST /api/register */
     public function register(RegisterRequest $request): JsonResponse
     {
@@ -32,7 +35,7 @@ class AuthController extends Controller
       'telegram_chat_id' => $data['telegram_chat_id'] ?? null,
         ]);
 
-        $token = $user->createToken('auth-token')->plainTextToken;
+        $token = $user->createToken('auth-token', ['*'], now()->addDays(self::TOKEN_TTL_DAYS))->plainTextToken;
 
         return response()->json([
             'message' => 'Registrasi berhasil.',
@@ -60,7 +63,7 @@ class AuthController extends Controller
             $user->refresh();
         }
 
-        $token = $user->createToken('auth-token')->plainTextToken;
+        $token = $user->createToken('auth-token', ['*'], now()->addDays(self::TOKEN_TTL_DAYS))->plainTextToken;
 
         return response()->json([
             'message' => 'Login berhasil.',

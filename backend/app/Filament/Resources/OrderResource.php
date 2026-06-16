@@ -41,7 +41,7 @@ class OrderResource extends Resource
                                 Components\TextEntry::make('payment_method')->label('Metode'),
                                 Components\TextEntry::make('status')->badge()->label('Status Transaksi')
                                     ->color(fn (string $state): string => match ($state) {
-                                        'paid'       => 'info',
+                                        'verified'   => 'info',
                                         'processing' => 'warning',
                                         'shipped'    => 'primary',
                                         'completed'  => 'success',
@@ -111,7 +111,7 @@ class OrderResource extends Resource
                     ->relationship('affiliate', 'name')->searchable()->preload()->nullable(),
                 Forms\Components\Select::make('status')->required()->options([
                     'pending'    => 'Pending',
-                    'paid'       => 'Paid',
+                    'verified'   => 'Verified',
                     'processing' => 'Processing',
                     'shipped'    => 'Shipped',
                     'completed'  => 'Completed',
@@ -150,7 +150,7 @@ class OrderResource extends Resource
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
-                        'paid'       => 'info',
+                        'verified'   => 'info',
                         'processing' => 'warning',
                         'shipped'    => 'primary',
                         'completed'  => 'success',
@@ -164,7 +164,7 @@ class OrderResource extends Resource
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')->options([
-                    'pending' => 'Pending', 'paid' => 'Paid', 'processing' => 'Processing',
+                    'pending' => 'Pending', 'verified' => 'Verified', 'processing' => 'Processing',
                     'shipped' => 'Shipped', 'completed' => 'Completed', 'cancelled' => 'Cancelled',
                 ]),
             ])

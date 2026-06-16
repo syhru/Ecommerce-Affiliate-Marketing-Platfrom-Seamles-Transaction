@@ -215,7 +215,7 @@ export default function ProfilePage() {
                   <Send className="w-5 h-5 text-blue-500" /> Notifikasi Telegram
                 </CardTitle>
                 <CardDescription>
-                  Hubungkan dengan ID Chat Telegram untuk _update_ pesanan cepat secara realtime.
+                  Hubungkan dengan ID Chat Telegram untuk <b>UPDATE</b> pesanan cepat secara realtime.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-6">

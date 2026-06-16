@@ -4,7 +4,7 @@ namespace App\Filament\Resources\OrderResource\Pages;
 
 use App\Filament\Resources\OrderResource;
 use App\Models\Order;
-use App\Services\NotificationService;
+use App\Services\OrderService;
 use Filament\Actions;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
@@ -29,18 +29,12 @@ class ViewOrder extends ViewRecord
                 ->modalHeading('Simulasi Pembayaran')
                 ->modalDescription('Apakah Anda yakin ingin menyimulasikan pembayaran yang berhasil untuk pesanan ini?')
                 ->action(function (Order $record) {
-                    $record->update([
-                        'status' => 'paid',
-                        'midtrans_transaction_id' => 'SIMULATED-' . now()->timestamp,
-                        'payment_verified_at' => now(),
-                    ]);
+                    // Run the exact same flow as a real Midtrans settlement webhook:
+                    // sets status => 'verified', payment_verified_at, midtrans_transaction_id,
+                    // creates a tracking log, records affiliate commission, and fires the
+                    // Telegram notification — keeping simulation and production in sync.
+                    app(OrderService::class)->verifyPayment($record, 'SIMULATED-' . now()->timestamp);
 
-                    $record->trackingLogs()->create([
-                        'status_title' => 'Pembayaran Dikonfirmasi',
-                        'description'  => 'Pembayaran telah diverifikasi via Simulasi Midtrans.',
-                    ]);
-
-                    app(NotificationService::class)->notifyOrderStatus($record, 'payment.confirmed');
                     Notification::make()->title('Simulasi pembayaran berhasil diproses.')->success()->send();
                 })
                 ->visible(fn (Order $record) => $record->status === 'pending'),
@@ -95,14 +89,13 @@ class ViewOrder extends ViewRecord
 
                     $record->trackingLogs()->create([
                         'status_title' => $actionData['title'],
-                        'description'  => "Status diperbarui secara manual via Panel Admin." . $descAddon,
+                        'description'  => "Status diperbarui oleh Admin." . $descAddon,
                     ]);
 
-                    app(NotificationService::class)->notifyOrderStatus($record, $data['event'], null);
 
                     Notification::make()->title('Status pesanan diperbarui dan notifikasi terkirim.')->success()->send();
                 })
-                ->visible(fn (Order $record) => in_array($record->status, ['paid', 'processing', 'shipped'])),
+                ->visible(fn (Order $record) => in_array($record->status, ['verified', 'processing', 'shipped'])),
         ];
     }
 }

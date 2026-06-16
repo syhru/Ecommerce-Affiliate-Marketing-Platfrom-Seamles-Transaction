@@ -174,9 +174,9 @@ class OrderService
                 ],
                 'item_details' => $midtransItems,
                 'callbacks' => [
-                    'finish'   => url('/checkout/success?order_number=' . $order->order_number),
-                    'unfinish' => url('/checkout'),
-                    'error'    => url('/checkout/failed'),
+                    'finish'   => env('FRONTEND_URL', 'http://localhost:3000') . '/orders/' . $order->order_number,
+                    'unfinish' => env('FRONTEND_URL', 'http://localhost:3000') . '/checkout',
+                    'error'    => env('FRONTEND_URL', 'http://localhost:3000') . '/checkout/failed',
                 ],
             ]);
 
@@ -267,5 +267,53 @@ class OrderService
         if ($commission) {
             $this->notification->notifyAffiliateCommission($commission);
         }
+    }
+
+    /**
+     * Handle a final-failed Midtrans payment (deny, cancel, expire, failure).
+     * Cancels the order and restores stock. Idempotent & safe against double webhooks.
+     *
+     * @param  string  $midtransStatus  Raw transaction_status from Midtrans
+     */
+    public function cancelFailedPayment(Order $order, string $midtransStatus): void
+    {
+        DB::transaction(function () use ($order, $midtransStatus) {
+            /** @var Order|null $locked */
+            $locked = Order::where('id', $order->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $locked) {
+                return;
+            }
+
+            // Idempotent & safe: only a still-pending order may be cancelled here.
+            // A verified payment or an order that already progressed (paid, processing,
+            // shipped, completed) or was already cancelled must never be touched —
+            // this also prevents double-restoring stock on duplicate webhooks.
+            if ($locked->payment_verified_at || $locked->status !== 'pending') {
+                return;
+            }
+
+            $locked->update([
+                'status'              => 'cancelled',
+                'cancelled_at'        => now(),
+                'cancellation_reason' => "Pembayaran gagal/batal/expired via Midtrans: {$midtransStatus}",
+            ]);
+
+            // Restore stock for every item (mirrors the decrement done at creation).
+            foreach ($locked->items as $item) {
+                $product = Product::find($item->product_id);
+                if ($product && $product->stock !== null) {
+                    $product->increment('stock', $item->quantity);
+                }
+            }
+
+            TrackingLog::create([
+                'order_id'     => $locked->id,
+                'status_title' => 'Pembayaran Gagal/Batal',
+                'description'  => "Pembayaran dibatalkan oleh Midtrans (status: {$midtransStatus}). Pesanan dibatalkan dan stok dikembalikan.",
+            ]);
+        });
     }
 }

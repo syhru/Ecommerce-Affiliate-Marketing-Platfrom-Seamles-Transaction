@@ -158,17 +158,17 @@ export default function CheckoutPage() {
         } else {
           (window as any).snap.pay(snapTokenOrUrl, {
             onSuccess: function() {
-              router.push(`/checkout/success?order_number=${orderNumber}`);
+              router.push(`/orders/${orderNumber}`);
             },
             onPending: function() {
-              router.push(`/checkout/success?order_number=${orderNumber}`);
+              router.push(`/orders/${orderNumber}`);
             },
             onError: function() {
               router.push('/checkout/failed');
             },
             onClose: function () {
               toast.error('Kamu menutup popup sebelum menyelesaikan pembayaran.');
-              router.push(`/checkout/success?order_number=${orderNumber}`); 
+              router.push(`/orders/${orderNumber}`);
             }
           });
         }

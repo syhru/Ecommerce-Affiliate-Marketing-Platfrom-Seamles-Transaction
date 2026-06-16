@@ -76,7 +76,7 @@ export default function LandingPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   const isAffiliate = user?.role === 'affiliate';
-  const hasTelegram = Boolean(user?.telegram_chat_id || user?.telegramChatId);
+  const hasTelegram = Boolean(user?.telegram_chat_id?.trim());
   const showAffiliateBanner = !isAffiliate;
   const showTelegramBanner = !hasTelegram;
   const showSection = showAffiliateBanner || showTelegramBanner;

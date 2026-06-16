@@ -12,9 +12,10 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 // ── Cookie helper (client-side) ──────────────────────────────
+// Session cookie (tanpa Max-Age) → terhapus saat browser ditutup,
+// sehingga user tidak otomatis tetap login setelah browser dibuka kembali.
 function setAuthCookie(token: string): void {
-  const maxAge = 60 * 60 * 24 * 7; // 7 hari
-  document.cookie = `auth_token=${encodeURIComponent(token)}; Max-Age=${maxAge}; Path=/; SameSite=Lax`;
+  document.cookie = `auth_token=${encodeURIComponent(token)}; Path=/; SameSite=Lax`;
 }
 
 import { useUserStore } from '@/src/stores/useUserStore';
@@ -64,12 +65,21 @@ export default function LoginPage() {
 
       toast.success(`Selamat datang, ${response.user.name}!`);
 
-      // Redirect berdasarkan role
+      // Redirect berdasarkan role.
+      // Admin SELALU lewat SSO bridge dulu, meski ada ?redirect=.
       const redirectUrl = searchParams.get('redirect');
-      if (redirectUrl) {
+      if (response.user.role === 'admin') {
+        // Admin SSO bridge: tukar token API menjadi web session Filament,
+        // lalu masuk /admin tanpa login ulang.
+        try {
+          const sso = await apiPost<{ url: string }>('/admin/filament-sso', {});
+          window.location.href = sso.url;
+        } catch {
+          // Fallback aman: arahkan ke Filament (akan meminta login manual).
+          window.location.href = process.env.NEXT_PUBLIC_FILAMENT_ADMIN_URL ?? 'http://localhost:8000/admin';
+        }
+      } else if (redirectUrl) {
         window.location.replace(redirectUrl);
-      } else if (response.user.role === 'admin') {
-        window.location.replace('/admin/dashboard');
       } else {
         window.location.replace('/');
       }

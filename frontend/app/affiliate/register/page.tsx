@@ -157,7 +157,7 @@ export default function AffiliateRegisterPage() {
             <p className="text-slate-500 font-medium text-xs truncate mt-0.5">{user.email}</p>
           </div>
           {/* Telegram status */}
-          {user.telegramChatId ? (
+          {Boolean(user.telegram_chat_id?.trim()) ? (
             <span className="text-[11px] px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-600 font-bold shrink-0">
               ✅ Terhubung
             </span>
@@ -169,7 +169,7 @@ export default function AffiliateRegisterPage() {
         </div>
 
         {/* ── Telegram Warning ──────────────────────────── */}
-        {!user.telegramChatId && (
+        {!user.telegram_chat_id?.trim() && (
           <div className="flex gap-4 p-5 rounded-2xl bg-amber-50 border border-amber-200 mb-7 shadow-inner">
             <span className="text-2xl shrink-0 mt-0.5">🔔</span>
             <div>

@@ -31,7 +31,7 @@ export default function TelegramSetupPage() {
     }
     
     // Proteksi: Jika user sudah terhubung telegram
-    if (user.telegramChatId || user.telegram_chat_id) {
+    if (user.telegram_chat_id?.trim()) {
       window.location.replace('/');
       return;
     }
@@ -55,7 +55,7 @@ export default function TelegramSetupPage() {
       
       // Update local storage via Zustand
       if (user) {
-        const updated = { ...user, telegramChatId: chatId.trim(), telegram_chat_id: chatId.trim() };
+        const updated = { ...user, telegram_chat_id: chatId.trim() };
         setUser(updated);
       }
       
@@ -86,7 +86,7 @@ export default function TelegramSetupPage() {
     );
   }
 
-  const isConnected = Boolean(user?.telegramChatId);
+  const isConnected = Boolean(user?.telegram_chat_id?.trim());
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-4 py-12 flex flex-col items-center">
@@ -114,7 +114,7 @@ export default function TelegramSetupPage() {
                 <span className="text-2xl">✅</span>
                 <div className="text-left">
                   <p className="font-bold text-sm">Telegram Terhubung</p>
-                  <p className="text-emerald-500/80 text-xs mt-0.5 font-mono">Chat ID: {user.telegramChatId}</p>
+                  <p className="text-emerald-500/80 text-xs mt-0.5 font-mono">Chat ID: {user.telegram_chat_id}</p>
                 </div>
               </div>
             )}
@@ -172,10 +172,10 @@ export default function TelegramSetupPage() {
                     </div>
                     <Button 
                       type="submit" 
-                      disabled={isSubmitting || chatId === user.telegramChatId}
+                      disabled={isSubmitting || chatId === user.telegram_chat_id}
                       className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-6"
                     >
-                      {isSubmitting ? 'Menyimpan...' : (isConnected && chatId === user.telegramChatId ? 'Tersimpan' : 'Simpan')}
+                      {isSubmitting ? 'Menyimpan...' : (isConnected && chatId === user.telegram_chat_id ? 'Tersimpan' : 'Simpan')}
                     </Button>
                   </form>
                 </div>

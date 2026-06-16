@@ -7,14 +7,14 @@ import { apiPost } from '@/src/lib/api';
 import type { LoginRequest, LoginResponse } from '@/src/types/auth';
 
 const TOKEN_KEY  = 'auth_token';
-const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 hari
 
 // ── Cookie helpers ───────────────────────────────────────────
 
+// Session cookie (tanpa Max-Age/Expires) → otomatis terhapus saat browser
+// ditutup, sehingga sesi tidak persisten dan user harus login ulang.
 export const setAuthCookie = (token: string): void => {
   document.cookie = [
     `${TOKEN_KEY}=${encodeURIComponent(token)}`,
-    `Max-Age=${COOKIE_MAX_AGE}`,
     'Path=/',
     'SameSite=Lax',
     // 'Secure', // aktifkan saat production (HTTPS)

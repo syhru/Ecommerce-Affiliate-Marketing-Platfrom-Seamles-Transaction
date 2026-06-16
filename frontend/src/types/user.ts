@@ -8,8 +8,7 @@ export interface User {
   name: string;
   email: string;
   role: 'admin' | 'affiliate' | 'customer';
-  telegramChatId: string | null;
-  telegram_chat_id?: string | null;
+  telegram_chat_id: string | null;
   affiliate_profile?: {
     status: string;
     referral_code?: string;

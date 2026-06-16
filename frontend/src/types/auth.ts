@@ -8,7 +8,7 @@ export interface User {
   name: string;
   email: string;
   role: 'admin' | 'affiliate' | 'customer';
-  telegramChatId: string | null;
+  telegram_chat_id: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

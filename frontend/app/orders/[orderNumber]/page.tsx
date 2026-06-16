@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiGet } from '@/src/lib/api';
 import type { User } from '@/src/types/user';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -77,11 +77,21 @@ const getStatusBadge = (status: string) => {
 export default function OrderTrackingPage() {
   const router = useRouter();
   const params = useParams();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const orderNumber = params.orderNumber as string;
-  
+
   const { user, isLoading: isStoreLoading } = useUserStore();
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Bersihkan query params bawaan Midtrans (?order_id=...&status_code=...&transaction_status=...)
+  // agar URL rapi menjadi /orders/{orderNumber}. Tidak reload, tidak ubah order number.
+  useEffect(() => {
+    if (searchParams.toString()) {
+      router.replace(pathname, { scroll: false });
+    }
+  }, [pathname, router, searchParams]);
 
   useEffect(() => {
     if (isStoreLoading) return;
@@ -293,7 +303,7 @@ export default function OrderTrackingPage() {
             </Card>
 
             {/* Telegram Reminder */}
-            {user?.telegramChatId ? (
+            {Boolean(user?.telegram_chat_id?.trim()) ? (
               <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex gap-3 items-start shadow-sm">
                 <span className="text-blue-500 text-xl">📱</span>
                 <div>

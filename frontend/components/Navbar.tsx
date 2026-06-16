@@ -1,7 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { apiGet } from '@/src/lib/api';
+import { apiGet, apiPost } from '@/src/lib/api';
 import { LogOut, Menu, ShoppingCart, User as UserIcon } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -43,9 +43,15 @@ export function Navbar() {
       const hasToken = document.cookie.split(';').some(c => c.trim().startsWith('auth_token='));
       if (hasToken) {
         fetchUser();
+      } else {
+        // Tidak ada token (mis. session cookie terhapus setelah browser ditutup):
+        // buang user yang masih ter-cache di localStorage agar UI tidak salah
+        // menampilkan kondisi "masih login".
+        clearUser();
+        try { localStorage.removeItem('auth_user_storage'); } catch {}
       }
     }
-  }, [fetchUser]);
+  }, [fetchUser, clearUser]);
 
   // Polling: re-fetch user data every 30s to detect role changes by admin
   useEffect(() => {
@@ -94,6 +100,18 @@ export function Navbar() {
     window.addEventListener('cart_updated', updateCartCount);
     return () => window.removeEventListener('cart_updated', updateCartCount);
   }, []);
+
+  // Buka Filament Admin Panel via SSO bridge (tukar token API jadi web session).
+  const handleOpenAdminPanel = async () => {
+    setIsMobileMenuOpen(false);
+    try {
+      const sso = await apiPost<{ url: string }>('/admin/filament-sso', {});
+      window.location.href = sso.url;
+    } catch {
+      // Fallback aman: arahkan ke Filament (akan meminta login manual).
+      window.location.href = process.env.NEXT_PUBLIC_FILAMENT_ADMIN_URL ?? 'http://localhost:8000/admin';
+    }
+  };
 
   const handleLogout = () => {
     // 1. Pembersihan Menyeluruh (Cookie, Session, Local)
@@ -196,7 +214,7 @@ export function Navbar() {
               <Link href="/affiliate/rejected" prefetch={false} scroll={false} className="hover:text-amber-500 transition-colors">Daftar Affiliate</Link>
             )}
             {user && user.role === 'admin' && (
-              <Link href="/admin/dashboard" prefetch={true} scroll={false} className="hover:text-amber-500 transition-colors">Admin Panel</Link>
+              <button type="button" onClick={handleOpenAdminPanel} className="hover:text-amber-500 transition-colors cursor-pointer">Admin Panel</button>
             )}
           </div>
 
@@ -258,7 +276,7 @@ export function Navbar() {
           {isPending && <Link href="/affiliate/pending" prefetch={false} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Jadi Affiliate</Link>}
           {isAffiliate && <Link href="/affiliate/dashboard" prefetch={false} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Dashboard Affiliate</Link>}
           {isRejected && <Link href="/affiliate/rejected" prefetch={false} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Daftar Affiliate</Link>}
-          {user && user.role === 'admin' && <Link href="/admin/dashboard" prefetch={true} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Admin Panel</Link>}
+          {user && user.role === 'admin' && <button type="button" onClick={handleOpenAdminPanel} className="text-slate-700 font-semibold px-2 py-1 text-left cursor-pointer">Admin Panel</button>}
           
           <hr className="border-slate-100 my-2" />
           
