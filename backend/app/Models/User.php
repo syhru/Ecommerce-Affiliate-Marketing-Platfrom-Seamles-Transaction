@@ -10,8 +10,9 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
+use Illuminate\Support\Str;
 
-class User extends Authenticatable implements FilamentUser
+class User extends Authenticatable implements FilamentUser, \Illuminate\Contracts\Auth\MustVerifyEmail
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
   use HasApiTokens, HasFactory, Notifiable;
@@ -29,6 +30,30 @@ class User extends Authenticatable implements FilamentUser
         'is_active',
     ];
 
+    protected static function booted(): void
+    {
+        static::updating(function (User $user) {
+            if ($user->isDirty('email')) {
+                $user->email_verified_at = null;
+            }
+            if ($user->isDirty('password') || $user->isDirty('role') || ($user->isDirty('is_active') && ! $user->is_active)) {
+                $currentVersion = $user->credential_version ?? $user->getOriginal('credential_version') ?? 1;
+                $user->credential_version = ((int) $currentVersion) + 1;
+                $user->remember_token = Str::random(60);
+            }
+        });
+        static::updated(function (User $user) {
+            if ($user->wasChanged('password') || $user->wasChanged('role') || ($user->wasChanged('is_active') && ! $user->is_active)) {
+                app(\App\Services\CredentialRevoker::class)->revoke($user);
+            }
+        });
+    }
+
+    public function credentialEpoch(): string
+    {
+        return (string) $this->credential_version;
+    }
+
     protected $hidden = [
         'password',
         'remember_token',
@@ -40,6 +65,7 @@ class User extends Authenticatable implements FilamentUser
             'email_verified_at' => 'datetime',
             'password'          => 'hashed',
             'is_active'         => 'boolean',
+            'credential_version' => 'integer',
         ];
     }
 
@@ -78,17 +104,16 @@ class User extends Authenticatable implements FilamentUser
     // ──────────────────────────── Helpers ──────────────────────────────
 
     /**
-     * Batasi akses panel Filament: hanya user dengan role `admin`.
-     * Wajib agar user biasa tidak bisa membuka /admin di production.
+     * Batasi akses panel Filament: superadmin + active + verified.
      */
     public function canAccessPanel(Panel $panel): bool
     {
-        return $this->role === 'admin';
+        return $this->isSuperadmin() && $this->is_active && $this->hasVerifiedEmail();
     }
 
-    public function isAdmin(): bool
+    public function isSuperadmin(): bool
     {
-        return $this->role === 'admin';
+        return $this->role === 'superadmin';
     }
 
     public function isAffiliate(): bool

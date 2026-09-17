@@ -13,6 +13,12 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Auth\Events\Login::class, function ($event) {
+            if (request()->hasSession()) {
+                request()->session()->put('credential_epoch', $event->user->credentialEpoch());
+                request()->session()->put('credential_user_id', $event->user->id);
+            }
+        });
         Order::observe(OrderObserver::class);
         Paginator::useBootstrapFive();
     }

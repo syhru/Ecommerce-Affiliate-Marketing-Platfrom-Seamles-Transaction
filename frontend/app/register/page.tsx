@@ -73,8 +73,9 @@ export default function RegisterPage() {
 
       toast.success(`Pendaftaran berhasil! Selamat datang, ${response.user.name}.`);
 
-      // Redirect berdasarkan role
-      if (response.user.role === 'admin') {
+      if (!response.user.email_verified) {
+        window.location.replace('/profile');
+      } else if (response.user.role === 'superadmin') {
         // Admin SSO bridge: tukar token API menjadi web session Filament,
         // lalu masuk /admin tanpa login ulang.
         try {
@@ -113,7 +114,7 @@ export default function RegisterPage() {
               </div>
               <h1 className="text-2xl font-bold text-slate-900">Buat Akun Baru</h1>
               <p className="text-slate-500 text-sm mt-1">
-                Gunakan email<strong className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">@tdr-hpz.com</strong>akan otomatis menjadi <strong className="text-slate-700">Admin</strong>. Selain itu menjadi <strong className="text-slate-700">customer</strong>.
+                Daftar sebagai customer. Anda dapat mengajukan akun affiliate setelah email diverifikasi.
               </p>
             </div>
 

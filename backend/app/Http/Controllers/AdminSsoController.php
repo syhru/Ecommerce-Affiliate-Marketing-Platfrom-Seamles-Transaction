@@ -28,14 +28,14 @@ class AdminSsoController extends Controller
     /**
      * POST /api/admin/filament-sso
      *
-     * Membuat one-time SSO token. Hanya untuk user role `admin` yang sudah
+     * Membuat one-time SSO token. Hanya untuk user role `superadmin` yang sudah
      * login via Sanctum. Mengembalikan URL backend untuk dikonsumsi browser.
      */
     public function generate(Request $request): JsonResponse
     {
         $user = $request->user();
 
-        if (! $user || $user->role !== 'admin') {
+        if (! $user || ! $user->isSuperadmin() || ! $user->is_active || ! $user->hasVerifiedEmail()) {
             return response()->json(['message' => 'Akses ditolak.'], 403);
         }
 
@@ -43,7 +43,7 @@ class AdminSsoController extends Controller
 
         Cache::put(
             self::CACHE_PREFIX . $token,
-            $user->id,
+            ['user_id' => $user->id, 'epoch' => $user->credentialEpoch()],
             now()->addSeconds(self::TTL_SECONDS),
         );
 
@@ -61,24 +61,27 @@ class AdminSsoController extends Controller
     public function consume(string $token): RedirectResponse
     {
         $cacheKey = self::CACHE_PREFIX . $token;
-        $userId   = Cache::get($cacheKey);
+        $credential = Cache::lock($cacheKey.':consume', 5)->get(fn () => Cache::pull($cacheKey));
 
-        // One-time use: hapus token apa pun hasil validasinya.
-        Cache::forget($cacheKey);
-
-        if (! $userId) {
+        if (! is_array($credential)) {
             return redirect('/admin/login')
                 ->withErrors(['email' => 'Sesi SSO tidak valid atau telah kedaluwarsa. Silakan login.']);
         }
 
-        $user = User::find($userId);
+        $user = User::find($credential['user_id']);
 
-        if (! $user || $user->role !== 'admin') {
+
+
+        if (! $user || ! $user->isSuperadmin() || ! $user->is_active || ! $user->hasVerifiedEmail()) {
             return redirect('/admin/login')
                 ->withErrors(['email' => 'Akun tidak memiliki akses admin.']);
         }
 
-        Auth::login($user);
+        if (! hash_equals($user->credentialEpoch(), $credential['epoch'])) {
+            return redirect('/admin/login')->withErrors(['email' => 'Sesi SSO tidak valid.']);
+        }
+
+        Auth::guard('web')->login($user);
         request()->session()->regenerate();
 
         return redirect('/admin');

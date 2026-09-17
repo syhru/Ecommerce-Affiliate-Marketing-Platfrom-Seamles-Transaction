@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectUsersTo(fn () => env('FRONTEND_URL', 'http://localhost:3000') . '/');
 
         $middleware->alias([
+            'account.active' => \App\Http\Middleware\EnsureAccountActive::class,
             'affiliate.active' => \App\Http\Middleware\EnsureAffiliateActive::class,
             'role'             => \App\Http\Middleware\EnsureUserRole::class,
             'track.affiliate'  => \App\Http\Middleware\TrackAffiliateClick::class,

@@ -9,6 +9,7 @@ use App\Http\Resources\UserResource;
 use App\Models\User;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules\Password;
@@ -23,9 +24,7 @@ class AuthController extends Controller
     {
         $data = $request->validated();
 
-        if (empty($data['role'])) {
-            $data['role'] = str_ends_with($data['email'], '@tdr-hpz.com') ? 'admin' : 'customer';
-        }
+        $data['role'] = $data['role'] ?? 'customer';
 
         $user = User::create([
       'name'             => $data['name'],
@@ -34,6 +33,8 @@ class AuthController extends Controller
       'role'             => $data['role'],
       'telegram_chat_id' => $data['telegram_chat_id'] ?? null,
         ]);
+
+        $user->sendEmailVerificationNotification();
 
         $token = $user->createToken('auth-token', ['*'], now()->addDays(self::TOKEN_TTL_DAYS))->plainTextToken;
 
@@ -57,11 +58,6 @@ class AuthController extends Controller
             return response()->json(['message' => 'Akun Anda dinonaktifkan.'], 403);
         }
 
-        // Email @tdr-hpz.com selalu jadi admin (handle akun lama)
-        if (str_ends_with($user->email, '@tdr-hpz.com') && $user->role !== 'admin') {
-            $user->update(['role' => 'admin']);
-            $user->refresh();
-        }
 
         $token = $user->createToken('auth-token', ['*'], now()->addDays(self::TOKEN_TTL_DAYS))->plainTextToken;
 
@@ -87,7 +83,16 @@ class AuthController extends Controller
             'telegram_chat_id' => 'nullable|string|max:100',
         ]);
 
-        $request->user()->update($data);
+        $user = $request->user();
+        $emailChanged = isset($data['email']) && $data['email'] !== $user->email;
+        if ($emailChanged) {
+            $request->validate(['current_password' => ['required', 'current_password:sanctum']]);
+            $user->email_verified_at = null;
+        }
+        $user->fill($data)->save();
+        if ($emailChanged) {
+            $user->sendEmailVerificationNotification();
+        }
 
         return response()->json([
             'message' => 'Profil berhasil diperbarui.',
@@ -137,7 +142,7 @@ class AuthController extends Controller
     }
 
     /** GET /api/email/verify/{id}/{hash} */
-    public function verifyEmail(Request $request, string $id, string $hash): JsonResponse
+    public function verifyEmail(Request $request, string $id, string $hash): JsonResponse|RedirectResponse
     {
         $user = User::findOrFail($id);
 
@@ -146,12 +151,12 @@ class AuthController extends Controller
         }
 
         if ($user->hasVerifiedEmail()) {
-            return response()->json(['message' => 'Email sudah terverifikasi.']);
+            return redirect(rtrim(config('app.frontend_url'), '/').'/email-verified?status=already-verified');
         }
 
         $user->markEmailAsVerified();
         event(new Verified($user));
 
-        return response()->json(['message' => 'Email berhasil diverifikasi.']);
+        return redirect(rtrim(config('app.frontend_url'), '/').'/email-verified?status=success');
     }
 }

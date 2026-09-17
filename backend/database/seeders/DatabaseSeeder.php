@@ -10,10 +10,10 @@ class DatabaseSeeder extends Seeder {
   use WithoutModelEvents;
 
   public function run(): void {
-    $this->call([
-      AdminSeeder::class,
-      AffiliateSeeder::class,
-      ProductSeeder::class,
-    ]);
+    $this->call(ProductSeeder::class);
+
+    if ($this->command->getLaravel()->environment(['local', 'testing'])) {
+      $this->call(AffiliateSeeder::class);
+    }
   }
 }

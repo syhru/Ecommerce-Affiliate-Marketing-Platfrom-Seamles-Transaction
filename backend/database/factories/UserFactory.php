@@ -25,15 +25,21 @@ class UserFactory extends Factory
             'password' => static::$password ??= Hash::make('password'),
             'role'          => 'customer',
             'is_active'     => true,
+            'credential_version' => 1,
             'remember_token' => Str::random(10),
         ];
     }
 
-    public function admin(): static
+    public function superadmin(): static
     {
         return $this->state(fn (array $attributes) => [
-            'role' => 'admin',
+            'role' => 'superadmin',
         ]);
+    }
+
+    public function admin(): static
+    {
+        return $this->superadmin();
     }
 
     public function affiliate(): static

@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiPost, apiPut } from '@/src/lib/api';
+import { clearLocalAuth } from '@/src/lib/auth';
 import { useUserStore } from '@/src/stores/useUserStore';
 import type { User } from '@/src/types/user';
 import { KeyRound, Send, UserCircle } from 'lucide-react';
@@ -54,9 +55,19 @@ export default function ProfilePage() {
 
   // ── 2. Handlers ──
   const handleUpdateProfile = async () => {
+    if (email !== user?.email && !currentPassword) {
+      toast.error('Isi Password Saat Ini pada bagian keamanan untuk mengganti email.');
+      document.getElementById('current_password')?.focus();
+      return;
+    }
     setIsSavingProfile(true);
     try {
-      const res = await apiPut<{ message: string; user: User }>('/user/profile', { name, email });
+      const res = await apiPut<{ message: string; user: User }>('/user/profile', {
+        name,
+        email,
+        ...(email !== user?.email ? { current_password: currentPassword } : {}),
+      });
+      setCurrentPassword('');
       setUser(res.user);
       toast.success(res.message || 'Profil berhasil diperbarui.');
       setIsEditingProfile(false);
@@ -102,11 +113,13 @@ export default function ProfilePage() {
         password_confirmation: passwordConfirmation,
       };
       await apiPut<{ message: string }>('/user/password', payload);
-      toast.success('Password berhasil diperbarui.');
+      clearLocalAuth();
+      toast.success('Password berhasil diperbarui. Silakan login kembali.');
       // Reset form sandi
       setCurrentPassword('');
       setNewPassword('');
       setPasswordConfirmation('');
+      window.location.href = '/login';
     } catch (err: any) {
       toast.error(err.message || 'Gagal memperbarui password.');
     } finally {
