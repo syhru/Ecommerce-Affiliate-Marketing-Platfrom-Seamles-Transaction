@@ -4,6 +4,7 @@
 // ============================================================
 
 import { apiPost } from '@/src/lib/api';
+import { useUserStore } from '@/src/stores/useUserStore';
 import type { LoginRequest, LoginResponse } from '@/src/types/auth';
 
 const TOKEN_KEY  = 'auth_token';
@@ -34,22 +35,37 @@ export const getTokenFromCookie = (): string | null => {
 // ── Auth actions ─────────────────────────────────────────────
 
 /**
- * Login — memanggil POST /api/auth/login
+ * Login memanggil endpoint autentikasi Laravel yang aktif.
  * Menyimpan token ke cookie dan user ke localStorage
  */
 export const login = async (credentials: LoginRequest): Promise<LoginResponse> => {
-  const response = await apiPost<LoginResponse>('/auth/login', credentials);
+  const response = await apiPost<LoginResponse>('/login', credentials);
 
   setAuthCookie(response.token);
 
   return response;
 };
 
-/**
- * Logout — menghapus token & user dari storage
- */
-export const logout = (): void => {
+export const resendEmailVerification = async (): Promise<string> => {
+  const response = await apiPost<{ message: string }>('/email/verification-notification', {});
+  return response.message;
+};
+
+export const clearLocalAuth = (): void => {
   clearAuthCookie();
+  useUserStore.getState().clearUser();
+  try { localStorage.removeItem('auth_user_storage'); } catch {}
+  try { sessionStorage.setItem('tdr_is_logging_out', 'true'); } catch {}
+};
+
+export const logout = async (): Promise<void> => {
+  try {
+    await apiPost('/logout', {});
+  } catch {
+    // Network failure must not prevent signing out on this browser.
+  } finally {
+    clearLocalAuth();
+  }
 };
 
 /**

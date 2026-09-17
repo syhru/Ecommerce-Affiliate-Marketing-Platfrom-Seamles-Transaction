@@ -9,6 +9,11 @@ use Illuminate\Support\Facades\Hash;
 
 class AffiliateSeeder extends Seeder {
   public function run(): void {
+    if (! $this->command->getLaravel()->environment(['local', 'testing'])) {
+      $this->command->warn('Affiliate demo seeding skipped outside local/testing environments.');
+      return;
+    }
+
     $affiliates = [
       ['name' => 'Budi Santoso',    'email' => 'budi@example.com'],
       ['name' => 'Rina Permata',    'email' => 'rina@example.com'],
@@ -22,7 +27,7 @@ class AffiliateSeeder extends Seeder {
       ['name' => 'Putri Handayani', 'email' => 'putri@example.com'],
     ];
 
-    $admin = User::where('role', 'admin')->first();
+    $admin = User::where('role', 'superadmin')->first();
 
     foreach ($affiliates as $data) {
       $user = User::firstOrCreate(

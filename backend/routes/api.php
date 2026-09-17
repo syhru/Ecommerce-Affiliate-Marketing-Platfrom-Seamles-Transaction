@@ -23,7 +23,7 @@ Route::get('/email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])
 Route::post('/email/verification-notification', function (\Illuminate\Http\Request $request) {
     $request->user()->sendEmailVerificationNotification();
     return response()->json(['message' => 'Email verifikasi telah dikirim.']);
-})->middleware(['auth:sanctum', 'throttle:6,1']);
+})->middleware(['auth:sanctum', 'account.active', 'throttle:6,1']);
 
 // products
 Route::get('/products', [ProductController::class, 'index']);
@@ -34,11 +34,11 @@ Route::post('/webhooks/midtrans', [MidtransWebhookController::class, 'handle']);
 
 // Admin SSO bridge — generate one-time token (admin only, butuh login Sanctum)
 Route::post('/admin/filament-sso', [\App\Http\Controllers\AdminSsoController::class, 'generate'])
-    ->middleware('auth:sanctum');
+    ->middleware(['auth:sanctum', 'account.active', 'verified']);
 
 
 // auth required routes
-Route::middleware(['auth:sanctum', 'verified'])->group(function () {
+Route::middleware(['auth:sanctum', 'account.active'])->group(function () {
 
     // auth & info
     Route::get('/user', [AuthController::class, 'user']);
@@ -47,6 +47,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     Route::post('/user/link-telegram', [AuthController::class, 'linkTelegram']);
     Route::post('/logout', [AuthController::class, 'logout']);
 
+    Route::middleware('verified')->group(function () {
     // user orders
     Route::get('/user/orders', [OrderController::class, 'userOrders']);
     Route::get('/orders/{idOrOrderNumber}', [OrderController::class, 'show']);
@@ -67,5 +68,6 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::get('/clicks', [AffiliateController::class, 'clicks']);
         Route::get('/withdrawals', [AffiliateController::class, 'withdrawals']);
         Route::post('/withdraw', [AffiliateController::class, 'withdraw']);
+    });
     });
 });

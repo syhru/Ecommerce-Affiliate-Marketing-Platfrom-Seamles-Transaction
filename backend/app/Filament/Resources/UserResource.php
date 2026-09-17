@@ -60,7 +60,7 @@ class UserResource extends Resource
                 Infolists\Components\TextEntry::make('role')->label('Role')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
-                        'admin'     => 'danger',
+                        'superadmin'     => 'danger',
                         'affiliate' => 'warning',
                         default     => 'success',
                     }),
@@ -81,7 +81,7 @@ class UserResource extends Resource
                 Tables\Columns\TextColumn::make('role')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
-                        'admin'     => 'danger',
+                        'superadmin'     => 'danger',
                         'affiliate' => 'warning',
                         default     => 'success',
                     }),
@@ -91,7 +91,7 @@ class UserResource extends Resource
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('role')->options([
-                    'admin' => 'Admin', 'affiliate' => 'Affiliate', 'customer' => 'Customer',
+                    'superadmin' => 'Superadmin', 'affiliate' => 'Affiliate', 'customer' => 'Customer',
                 ]),
                 Tables\Filters\TernaryFilter::make('is_active')->label('Active Status'),
             ])

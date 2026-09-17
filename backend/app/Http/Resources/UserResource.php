@@ -16,6 +16,7 @@ class UserResource extends JsonResource
             'role'             => $this->role,
             'telegram_chat_id' => $this->telegram_chat_id,
             'is_active'        => $this->is_active,
+            'email_verified'   => $this->hasVerifiedEmail(),
             'created_at'       => $this->created_at?->toISOString(),
 
             'affiliate_profile' => $this->when(

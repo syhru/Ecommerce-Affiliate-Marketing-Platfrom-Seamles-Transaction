@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { apiGet, apiPost } from '@/src/lib/api';
+import { logout, resendEmailVerification } from '@/src/lib/auth';
 import { LogOut, Menu, ShoppingCart, User as UserIcon } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -10,6 +11,11 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 import { useUserStore } from '@/src/stores/useUserStore';
+import type { User } from '@/src/types/user';
+
+type CartItem = {
+  quantity?: number | string;
+};
 
 export function Navbar() {
   const router = useRouter();
@@ -21,6 +27,7 @@ export function Navbar() {
   const [cartCount, setCartCount] = useState(0);
   const [isHydrated, setIsHydrated] = useState(false); 
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isResendingVerification, setIsResendingVerification] = useState(false);
 
   useEffect(() => {
     setIsHydrated(true);
@@ -84,8 +91,8 @@ export function Navbar() {
         if (typeof window !== 'undefined') {
           const cart = JSON.parse(localStorage.getItem('tdr_cart') || '[]');
           if (Array.isArray(cart)) {
-            const totalQty = cart.reduce((acc: number, item: any) => {
-              const q = parseInt(item.quantity, 10);
+            const totalQty = cart.reduce((acc: number, item: CartItem) => {
+              const q = parseInt(String(item.quantity ?? 1), 10);
               return acc + (isNaN(q) ? 1 : q);
             }, 0);
             setCartCount(totalQty);
@@ -113,21 +120,23 @@ export function Navbar() {
     }
   };
 
-  const handleLogout = () => {
-    // 1. Pembersihan Menyeluruh (Cookie, Session, Local)
-    document.cookie = 'auth_token=; Max-Age=0; Path=/';
-    try { localStorage.removeItem('auth_user_storage'); } catch {}
-    try { sessionStorage.clear(); } catch {}
-
-    // 2. Tanam bendera khusus logout (setelah clear) agar auth guard tidak ter-trigger
-    try { sessionStorage.setItem('tdr_is_logging_out', 'true'); } catch {}
-
-    // 3. Clear memori Zustand
-    clearUser();
+  const handleLogout = async () => {
+    await logout();
     toast.success('Berhasil logout.');
     
     // 4. Hard Redirect (memerintahkan browser mereload bersih memutus routing NextJS)
     window.location.href = '/login';
+  };
+
+  const handleResendVerification = async () => {
+    setIsResendingVerification(true);
+    try {
+      toast.success(await resendEmailVerification());
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Email verifikasi gagal dikirim.');
+    } finally {
+      setIsResendingVerification(false);
+    }
   };
 
   const handleJadiAffiliateClick = async (e: React.MouseEvent) => {
@@ -138,8 +147,8 @@ export function Navbar() {
 
     try {
       // Selalu fetch terbaru untuk memastikan status real-time
-      const res = await apiGet<any>('/user');
-      const apiUser = res?.data || res?.user || res;
+      const res = await apiGet<{ data?: User; user?: User }>('/user');
+      const apiUser = res.data ?? res.user;
       
       if (apiUser) {
         if (JSON.stringify(apiUser) !== JSON.stringify(user)) {
@@ -169,6 +178,7 @@ export function Navbar() {
   const isPending = isUserLoaded && user?.affiliate_profile?.status === 'pending';
   const isRejected = isUserLoaded && user?.affiliate_profile?.status === 'rejected';
   const isAffiliate = isUserLoaded && user?.role === 'affiliate' && user?.affiliate_profile?.status === 'active';
+  const isVerified = isUserLoaded && user.email_verified;
   const isStandardUser = isUserLoaded && ((user?.role as string) === 'user' || user?.role === 'customer') && !isPending && !isAffiliate && !isRejected;
 
   const navBaseClasses = "fixed top-0 inset-x-0 z-50 transition-all duration-300 border-b";
@@ -195,25 +205,25 @@ export function Navbar() {
           <div className="hidden md:flex items-center gap-8">
             <div className={`flex items-center gap-6 text-sm font-semibold transition-colors ${isScrolled ? 'text-slate-600' : 'text-slate-700'}`}>
             <Link href="/" prefetch={true} scroll={false} className="hover:text-amber-500 transition-colors">Beranda</Link>
-            {user && (
+            {user && isVerified && (
               <Link href="/shop" prefetch={true} scroll={false} className="hover:text-amber-500 transition-colors">Katalog Produk</Link>
             )}
-            {user && user.role !== 'admin' && (
+            {user && isVerified && user.role !== 'superadmin' && (
               <Link href="/orders" prefetch={false} scroll={false} className="hover:text-amber-500 transition-colors">Histori</Link>
             )}
-            {isStandardUser && (
+            {isVerified && isStandardUser && (
               <Link href="/affiliate/register" prefetch={true} scroll={false} onClick={handleJadiAffiliateClick} className="hover:text-amber-500 transition-colors cursor-pointer">Jadi Affiliate</Link>
             )}
-            {isPending && (
+            {isVerified && isPending && (
               <Link href="/affiliate/pending" prefetch={false} scroll={false} className="hover:text-amber-500 transition-colors">Jadi Affiliate</Link>
             )}
-            {isAffiliate && (
+            {isVerified && isAffiliate && (
               <Link href="/affiliate/dashboard" prefetch={false} scroll={false} className="hover:text-amber-500 transition-colors">Dashboard Affiliate</Link>
             )}
-            {isRejected && (
+            {isVerified && isRejected && (
               <Link href="/affiliate/rejected" prefetch={false} scroll={false} className="hover:text-amber-500 transition-colors">Daftar Affiliate</Link>
             )}
-            {user && user.role === 'admin' && (
+            {isVerified && user && user.role === 'superadmin' && (
               <button type="button" onClick={handleOpenAdminPanel} className="hover:text-amber-500 transition-colors cursor-pointer">Admin Panel</button>
             )}
           </div>
@@ -221,7 +231,7 @@ export function Navbar() {
           <div className="flex items-center gap-4">
             {user ? (
               <>
-                {user.role !== 'admin' && (
+                {isVerified && user.role !== 'superadmin' && (
                   <Link href="/cart" prefetch={true} scroll={false} className={`relative p-2 rounded-full hover:bg-slate-100 transition-colors ${isScrolled ? 'text-slate-700' : 'text-slate-800'}`}>
                     <ShoppingCart className="w-5 h-5" />
                     {cartCount > 0 && (
@@ -254,6 +264,20 @@ export function Navbar() {
         </div>
         )}
 
+        {user && !user.email_verified && !isAuthPage && (
+          <div className="absolute left-0 top-full w-full border-b border-amber-300 bg-amber-50 px-4 py-2 text-center text-sm text-slate-800">
+            <span>Email Anda belum diverifikasi. Fitur transaksi belum dapat digunakan.</span>{' '}
+            <button
+              type="button"
+              onClick={handleResendVerification}
+              disabled={isResendingVerification}
+              className="min-h-11 px-2 font-bold text-amber-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 disabled:opacity-60"
+            >
+              {isResendingVerification ? 'Mengirim...' : 'Kirim ulang verifikasi'}
+            </button>
+          </div>
+        )}
+
         {/* Mobile Menu Toggle */}
         {!isAuthPage && (
           <button 
@@ -270,13 +294,13 @@ export function Navbar() {
       {!isAuthPage && isMobileMenuOpen && (
         <div className="md:hidden absolute top-full left-0 w-full bg-white border-b border-slate-200 shadow-xl py-4 px-4 flex flex-col gap-4">
           <Link href="/" prefetch={true} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Beranda</Link>
-          {user && <Link href="/shop" prefetch={true} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Katalog Produk</Link>}
-          {user && user.role !== 'admin' && <Link href="/orders" prefetch={false} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Histori</Link>}
-          {isStandardUser && <Link href="/affiliate/register" prefetch={true} scroll={false} onClick={handleJadiAffiliateClick} className="text-slate-700 font-semibold px-2 py-1 cursor-pointer">Jadi Affiliate</Link>}
-          {isPending && <Link href="/affiliate/pending" prefetch={false} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Jadi Affiliate</Link>}
-          {isAffiliate && <Link href="/affiliate/dashboard" prefetch={false} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Dashboard Affiliate</Link>}
-          {isRejected && <Link href="/affiliate/rejected" prefetch={false} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Daftar Affiliate</Link>}
-          {user && user.role === 'admin' && <button type="button" onClick={handleOpenAdminPanel} className="text-slate-700 font-semibold px-2 py-1 text-left cursor-pointer">Admin Panel</button>}
+          {user && isVerified && <Link href="/shop" prefetch={true} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Katalog Produk</Link>}
+          {user && isVerified && user.role !== 'superadmin' && <Link href="/orders" prefetch={false} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Histori</Link>}
+          {isVerified && isStandardUser && <Link href="/affiliate/register" prefetch={true} scroll={false} onClick={handleJadiAffiliateClick} className="text-slate-700 font-semibold px-2 py-1 cursor-pointer">Jadi Affiliate</Link>}
+          {isVerified && isPending && <Link href="/affiliate/pending" prefetch={false} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Jadi Affiliate</Link>}
+          {isVerified && isAffiliate && <Link href="/affiliate/dashboard" prefetch={false} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Dashboard Affiliate</Link>}
+          {isVerified && isRejected && <Link href="/affiliate/rejected" prefetch={false} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Daftar Affiliate</Link>}
+          {isVerified && user && user.role === 'superadmin' && <button type="button" onClick={handleOpenAdminPanel} className="text-slate-700 font-semibold px-2 py-1 text-left cursor-pointer">Admin Panel</button>}
           
           <hr className="border-slate-100 my-2" />
           

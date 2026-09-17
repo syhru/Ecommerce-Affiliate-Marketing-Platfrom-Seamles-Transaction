@@ -68,7 +68,7 @@ export default function LoginPage() {
       // Redirect berdasarkan role.
       // Admin SELALU lewat SSO bridge dulu, meski ada ?redirect=.
       const redirectUrl = searchParams.get('redirect');
-      if (response.user.role === 'admin') {
+      if (response.user.role === 'superadmin') {
         // Admin SSO bridge: tukar token API menjadi web session Filament,
         // lalu masuk /admin tanpa login ulang.
         try {

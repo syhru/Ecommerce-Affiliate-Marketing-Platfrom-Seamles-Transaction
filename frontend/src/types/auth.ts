@@ -7,11 +7,11 @@ export interface User {
   id: number;
   name: string;
   email: string;
-  role: 'admin' | 'affiliate' | 'customer';
+  role: 'superadmin' | 'affiliate' | 'customer';
   telegram_chat_id: string | null;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
+  email_verified: boolean;
+  is_active: boolean;
+  created_at: string;
 }
 
 export interface LoginRequest {
