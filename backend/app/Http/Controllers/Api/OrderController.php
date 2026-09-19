@@ -41,7 +41,15 @@ class OrderController extends Controller
         // Also keep it at top level for single-product format compatibility
         $data['affiliate_code'] = $affiliateCode;
 
-        $order = $this->orderService->createOrder($data, $request->user()->id);
+        try {
+            $order = $this->orderService->createOrder($data, $request->user()->id);
+        } catch (\InvalidArgumentException $e) {
+            // Insufficient stock or unsupported courier/service: nothing was
+            // created and no payment was attempted.
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
 
         return response()->json([
             'message'        => 'Pesanan berhasil dibuat.',
