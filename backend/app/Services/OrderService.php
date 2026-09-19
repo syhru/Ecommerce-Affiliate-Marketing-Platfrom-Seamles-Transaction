@@ -16,83 +16,101 @@ class OrderService
         protected MidtransService    $midtrans,
         protected AffiliateService   $affiliate,
         protected NotificationService $notification,
+        protected ShippingRateService $shippingRates,
+        protected ProductInventoryService $inventory,
     ) {
     }
 
     /**
-     * @param array $data   Validated payload
-     * @param int   $customerId
+     * Normalize the incoming order payload into one quantity per product.
+     *
+     * Duplicate product entries are summed so they can never be used to slip
+     * past per-line stock validation (WS-02 §5.1 / AC-04).
+     *
+     * @param  array  $data  Validated payload
+     * @return array<int, array{product_id: int, quantity: int, affiliate_code: string|null}>
+     */
+    protected function normalizeItems(array $data): array
+    {
+        // Legacy single-product payload (product_id at top level).
+        if (isset($data['product_id'])) {
+            return [[
+                'product_id'     => (int) $data['product_id'],
+                'quantity'       => max(1, (int) ($data['quantity'] ?? 1)),
+                'affiliate_code' => $data['affiliate_code'] ?? null,
+            ]];
+        }
+
+        $merged = [];
+
+        foreach ($data['items'] ?? [] as $raw) {
+            $productId = (int) $raw['product_id'];
+            $quantity  = max(1, (int) ($raw['quantity'] ?? 1));
+            $affCode   = $raw['affiliate_code'] ?? null;
+
+            if (isset($merged[$productId])) {
+                $merged[$productId]['quantity'] += $quantity;
+            } else {
+                $merged[$productId] = [
+                    'product_id'     => $productId,
+                    'quantity'       => $quantity,
+                    'affiliate_code' => $affCode,
+                ];
+            }
+        }
+
+        return array_values($merged);
+    }
+
+    /**
+     * @param  array  $data   Validated payload
+     * @param  int    $customerId
+     *
+     * @throws \InvalidArgumentException When stock is insufficient or the
+     *                                   courier/service is not supported.
      */
     public function createOrder(array $data, int $customerId): Order
     {
-        return DB::transaction(function () use ($data, $customerId) {
+        // Server-side shipping rate is authoritative (PA-F-03 / AC-07, AC-09).
+        // Resolved up-front so an unsupported courier fails before any stock is
+        // touched or any order row is written.
+        $courier      = $data['shipping_courier'];
+        $shippingCost = $this->shippingRates->cost($courier);
 
-            // DEBUG: log incoming affiliate data
-            \Illuminate\Support\Facades\Log::info('OrderService::createOrder - incoming data', [
-                'customer_id' => $customerId,
-                'top_level_affiliate_code' => $data['affiliate_code'] ?? 'NOT SET',
-                'items' => collect($data['items'] ?? [])->map(fn ($i) => [
-                    'product_id' => $i['product_id'] ?? '?',
-                    'affiliate_code' => $i['affiliate_code'] ?? 'NOT SET',
-                ])->toArray(),
-            ]);
+        // Normalize duplicates first: validation and reservation always see the
+        // effective total quantity per product.
+        $items = $this->normalizeItems($data);
 
-            if (isset($data['product_id'])) {
-                $rawItems = [[
-                    'product_id'     => $data['product_id'],
-                    'quantity'       => $data['quantity'] ?? 1,
-                    'affiliate_code' => $data['affiliate_code'] ?? null,
-                ]];
-            } else {
-                $rawItems = $data['items'] ?? [];
-            }
-
-            $resolvedItems = [];
+        return DB::transaction(function () use ($data, $customerId, $items, $courier, $shippingCost) {
             $subtotal      = 0;
             $commTotal     = 0;
             $primaryAffId  = null;
+            $resolvedItems = [];
             $midtransItems = [];
 
-            foreach ($rawItems as $raw) {
-                $product   = Product::findOrFail($raw['product_id']);
-                $qty       = max(1, (int) ($raw['quantity'] ?? 1));
+            foreach ($items as $item) {
+                $product = Product::findOrFail($item['product_id']);
+                $qty     = $item['quantity'];
+
+                // Reserve stock atomically *before* creating any order row.
+                // This throws when stock is insufficient, which aborts the whole
+                // transaction — order rows, items and stock all roll back
+                // together, and Midtrans is never called.
+                $this->inventory->reserve($product, $qty);
+
                 $itemTotal = round((float) $product->price * $qty, 2);
                 $subtotal += $itemTotal;
 
-                // Resolve per-item affiliate
-                $affId       = null;
-                $commRate    = 0;
-                $commAmount  = 0;
-                $affCode     = $raw['affiliate_code'] ?? null;
+                // Resolve affiliate by canonical referral_code only (PA-F-07).
+                $affId      = null;
+                $commRate   = 0;
+                $commAmount = 0;
+                $affCode    = $item['affiliate_code'];
 
                 if (! empty($affCode)) {
-                    \Illuminate\Support\Facades\Log::info('OrderService - resolving affiliate', [
-                        'affiliate_code_raw' => $affCode,
-                        'affiliate_code_trimmed' => trim($affCode),
-                    ]);
-
-                    // Primary lookup: by referral_code in affiliate_profiles
                     $affProfile = AffiliateProfile::where('referral_code', trim($affCode))
                         ->where('status', 'active')
                         ->first();
-
-                    // Fallback lookup: by user name -> then fetch their affiliate profile
-                    if (! $affProfile) {
-                        $affUser = \App\Models\User::where('name', trim($affCode))->first();
-                        if ($affUser) {
-                            $affProfile = AffiliateProfile::where('user_id', $affUser->id)
-                                ->where('status', 'active')
-                                ->first();
-                        }
-                    }
-
-                    \Illuminate\Support\Facades\Log::info('OrderService - affiliate lookup result', [
-                        'affiliate_code' => $affCode,
-                        'found' => $affProfile ? true : false,
-                        'profile_id' => $affProfile?->id,
-                        'user_id' => $affProfile?->user_id,
-                        'referral_code_in_db' => $affProfile?->referral_code,
-                    ]);
 
                     if ($affProfile) {
                         $affId      = $affProfile->user_id;
@@ -116,9 +134,9 @@ class OrderService
                 ];
             }
 
-            $shippingCost = (float) ($data['shipping_cost'] ?? 0);
-            $totalAmount  = $subtotal + $shippingCost;
-            $orderNumber  = 'TDR-' . strtoupper(Str::random(8));
+            // All money the client can be charged is computed here, server-side.
+            $totalAmount = round($subtotal + $shippingCost, 2);
+            $orderNumber = 'TDR-' . strtoupper(Str::random(8));
 
             /** @var Order $order */
             $order = Order::create([
@@ -132,7 +150,7 @@ class OrderService
                 'status'           => 'pending',
                 'payment_method'   => $data['payment_method'] ?? null,
                 'shipping_address' => $data['shipping_address'],
-                'shipping_courier' => $data['shipping_courier'],
+                'shipping_courier' => $courier,
                 'notes'            => $data['notes'] ?? null,
             ]);
 
@@ -147,22 +165,21 @@ class OrderService
                     'affiliate_code'    => $ri['affCode'],
                     'commission_amount' => $ri['commAmount'],
                 ]);
-
-                if ($ri['product']->stock !== null) {
-                    $ri['product']->decrement('stock', $ri['qty']);
-                }
             }
 
             if ($shippingCost > 0) {
                 $midtransItems[] = [
                     'id'       => 'SHIPPING',
-                    'price'    => (int) $shippingCost,
+                    'price'    => $shippingCost,
                     'quantity' => 1,
-                    'name'     => 'Ongkos Kirim (' . $data['shipping_courier'] . ')',
+                    'name'     => 'Ongkos Kirim (' . $courier . ')',
                 ];
             }
 
-            //Build Midtrans Snap token
+            // External boundary: the Midtrans call is made only after the order
+            // and its items are fully written and the stock is reserved, and it
+            // is the LAST step inside the transaction. If it throws, the whole
+            // transaction — order, items and stock — rolls back together.
             $snapUrl = $this->midtrans->createSnapToken([
                 'transaction_details' => [
                     'order_id'     => $order->order_number,
@@ -301,11 +318,11 @@ class OrderService
                 'cancellation_reason' => "Pembayaran gagal/batal/expired via Midtrans: {$midtransStatus}",
             ]);
 
-            // Restore stock for every item (mirrors the decrement done at creation).
+            // Restore stock for every item (mirrors the reservation done at creation).
             foreach ($locked->items as $item) {
                 $product = Product::find($item->product_id);
-                if ($product && $product->stock !== null) {
-                    $product->increment('stock', $item->quantity);
+                if ($product) {
+                    $this->inventory->release($product, $item->quantity);
                 }
             }
 
