@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\AffiliateCommission;
 use App\Models\AffiliateProfile;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -253,7 +254,7 @@ class OrderService
             }
 
             $locked->update([
-                'status'                  => 'verified',
+                'status'                  => Order::STATUS_VERIFIED,
                 'midtrans_transaction_id' => $transactionId,
                 'payment_verified_at'     => now(),
             ]);
@@ -264,11 +265,11 @@ class OrderService
                 'description'  => 'Pembayaran telah diverifikasi via Midtrans.',
             ]);
 
+            // Commission is created as pending only. It must NOT be earned yet
+            // and the balance must NOT move: `pending → earned` happens only
+            // when the order completes (WS-03 §3.2 / PA-F-08 / AC-02, AC-03).
             if ($locked->affiliate_id) {
                 $commission = $this->affiliate->recordCommission($locked);
-                if ($commission) {
-                    $this->affiliate->earnCommission($commission);
-                }
             }
 
             $processed = true;
@@ -284,6 +285,162 @@ class OrderService
         if ($commission) {
             $this->notification->notifyAffiliateCommission($commission);
         }
+    }
+
+    /**
+     * Complete an order: `shipped → completed`, earning the pending commission
+     * and crediting the affiliate balance exactly once (WS-03 §3.2, §5.2 /
+     * PA-F-08 / AC-04, AC-05, AC-06).
+     *
+     * This is the single canonical completion path. The scheduler command, the
+     * auto-complete job and the Filament admin action all funnel through here,
+     * so no path can mark an order completed without earning its commission.
+     *
+     * Idempotent: a lockForUpdate on the order row plus the commission's own
+     * pending→earned guard make repeated completion or a retried job a no-op.
+     *
+     * @throws \DomainException When the order is not in a completable state.
+     */
+    public function markCompleted(Order $order): void
+    {
+        $commission = null;
+        $processed  = false;
+
+        DB::transaction(function () use ($order, &$commission, &$processed) {
+            $locked = Order::where('id', $order->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $locked) {
+                return;
+            }
+
+            // A completed order stays completed; a cancelled order is terminal
+            // and must never be completed (WS-03 §6).
+            if (! in_array($locked->status, Order::COMPLETABLE_STATUSES, true)) {
+                if ($locked->status === Order::STATUS_COMPLETED) {
+                    $processed = true; // already completed — no-op
+                }
+                return;
+            }
+
+            $locked->update([
+                'status'       => Order::STATUS_COMPLETED,
+                'completed_at' => now(),
+            ]);
+
+            // pending commission → earned, balance += amount, total_earned
+            // += amount, all inside the same transaction as the status change.
+            if ($locked->affiliate_id) {
+                $commission = AffiliateCommission::where('order_id', $locked->id)->first();
+
+                if ($commission) {
+                    $this->affiliate->earnCommission($commission);
+                }
+            }
+
+            $processed = true;
+        });
+
+        if (! $processed) {
+            throw new \DomainException(
+                "Pesanan #{$order->order_number} tidak dapat diselesaikan (status: {$order->status})."
+            );
+        }
+
+        // The `order.delivered` status notification is sent by the OrderObserver
+        // (the row it is written with is part of this transaction, so a rollback
+        // silently undoes it). This service only owns the *financial*
+        // notification, and only after the credit has actually committed
+        // (WS-03 §5.6 / AC-19).
+        if ($commission) {
+            $this->notification->notifyAffiliateBalanceCredited($order->fresh());
+        }
+    }
+
+    /**
+     * Cancel an order that has not been completed: restore its stock once,
+     * void its pending commission, record tracking history (WS-03 §3.3, §5.3 /
+     * PA-F-09 / AC-07..AC-12).
+     *
+     * This is the single canonical cancellation path. Cancellation never
+     * claims a payment refund was issued — automatic Midtrans refunds are
+     * explicitly out of scope for WS-03.
+     *
+     * Idempotent: an already-cancelled order is re-locked and left untouched,
+     * so stock is restored and a commission voided exactly once.
+     *
+     * @throws \DomainException When the order cannot be cancelled.
+     */
+    public function cancelOrder(Order $order, ?string $reason = null): void
+    {
+        $processed = false;
+
+        DB::transaction(function () use ($order, $reason, &$processed) {
+            $locked = Order::where('id', $order->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $locked) {
+                return;
+            }
+
+            // Idempotent: an already-cancelled order is a no-op.
+            if ($locked->status === Order::STATUS_CANCELLED) {
+                $processed = true;
+                return;
+            }
+
+            // A completed order is terminal for normal cancellation; refunds
+            // and returns after completion are a separate flow (WS-03 §3.3).
+            if (! in_array($locked->status, Order::CANCELLABLE_STATUSES, true)) {
+                return;
+            }
+
+            $locked->update([
+                'status'              => Order::STATUS_CANCELLED,
+                'cancelled_at'        => now(),
+                'cancellation_reason' => $reason,
+            ]);
+
+            // Restore stock for every item, exactly once (mirrors the
+            // reservation done at creation).
+            foreach ($locked->items as $item) {
+                $product = Product::find($item->product_id);
+
+                if ($product) {
+                    $this->inventory->release($product, $item->quantity);
+                }
+            }
+
+            // Void the pending commission. It was never credited, so the
+            // balance and total_earned must not change (AC-08).
+            if ($locked->affiliate_id) {
+                $commission = AffiliateCommission::where('order_id', $locked->id)->first();
+
+                if ($commission) {
+                    $this->affiliate->cancelCommission($commission);
+                }
+            }
+
+            TrackingLog::create([
+                'order_id'     => $locked->id,
+                'status_title' => 'Pesanan Dibatalkan',
+                'description'  => $reason ?: 'Pesanan dibatalkan. Stok telah dikembalikan.',
+            ]);
+
+            $processed = true;
+        });
+
+        if (! $processed) {
+            throw new \DomainException(
+                "Pesanan #{$order->order_number} tidak dapat dibatalkan (status: {$order->status})."
+            );
+        }
+
+        // The `order.cancelled` status notification is owned by the OrderObserver
+        // and its copy is deliberately free of any refund claim (AC-12, AC-19).
+        // Cancellation has no separate financial notification to send here.
     }
 
     /**
@@ -313,7 +470,7 @@ class OrderService
             }
 
             $locked->update([
-                'status'              => 'cancelled',
+                'status'              => Order::STATUS_CANCELLED,
                 'cancelled_at'        => now(),
                 'cancellation_reason' => "Pembayaran gagal/batal/expired via Midtrans: {$midtransStatus}",
             ]);

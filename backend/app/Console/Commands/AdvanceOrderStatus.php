@@ -4,9 +4,9 @@ namespace App\Console\Commands;
 
 use App\Models\Order;
 use App\Models\TrackingLog;
+use App\Services\OrderService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
-
 
 class AdvanceOrderStatus extends Command
 {
@@ -20,10 +20,10 @@ class AdvanceOrderStatus extends Command
 
         // ── 1. verified → processing (1 menit setelah payment_verified_at)
         Order::whereNotNull('payment_verified_at')
-            ->where('status', 'verified')
+            ->where('status', Order::STATUS_VERIFIED)
             ->where('payment_verified_at', '<=', $now->copy()->subMinute())
             ->each(function (Order $order) use (&$advanced) {
-                $order->update(['status' => 'processing']);
+                $order->update(['status' => Order::STATUS_PROCESSING]);
                 TrackingLog::create([
                     'order_id'     => $order->id,
                     'status_title' => 'Sedang Diproses',
@@ -34,10 +34,10 @@ class AdvanceOrderStatus extends Command
             });
 
         // ── 2. processing → shipped (5 menit setelah updated_at)
-        Order::where('status', 'processing')
+        Order::where('status', Order::STATUS_PROCESSING)
             ->where('updated_at', '<=', $now->copy()->subMinutes(5))
             ->each(function (Order $order) use (&$advanced) {
-                $order->update(['status' => 'shipped', 'shipped_at' => now()]);
+                $order->update(['status' => Order::STATUS_SHIPPED, 'shipped_at' => now()]);
                 TrackingLog::create([
                     'order_id'     => $order->id,
                     'status_title' => 'Pesanan Dikirim',
@@ -48,13 +48,19 @@ class AdvanceOrderStatus extends Command
             });
 
         // ── 3. shipped → completed (15 menit setelah shipped_at)
-        Order::where('status', 'shipped')
+        //    Completion must go through the canonical lifecycle path so the
+        //    pending commission is earned and the balance credited exactly
+        //    once — a bare update here would skip that (WS-03 §5.2).
+        $orderService = app(OrderService::class);
+
+        Order::where('status', Order::STATUS_SHIPPED)
             ->where(function ($q) use ($now) {
                 $q->whereNotNull('shipped_at')
                   ->where('shipped_at', '<=', $now->copy()->subMinutes(15));
             })
-            ->each(function (Order $order) use (&$advanced) {
-                $order->update(['status' => 'completed', 'completed_at' => now()]);
+            ->each(function (Order $order) use ($orderService, &$advanced) {
+                $orderService->markCompleted($order);
+
                 TrackingLog::create([
                     'order_id'     => $order->id,
                     'status_title' => 'Pesanan Diterima',

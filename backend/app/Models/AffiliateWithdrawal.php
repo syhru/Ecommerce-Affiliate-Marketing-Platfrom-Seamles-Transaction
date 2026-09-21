@@ -7,6 +7,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AffiliateWithdrawal extends Model
 {
+    /**
+     * WS-03 withdrawal lifecycle: `pending` is the only processable state.
+     * `completed` and `rejected` are terminal for normal admin processing
+     * (§5.5 / AC-18).
+     */
+    public const string STATUS_PENDING   = 'pending';
+    public const string STATUS_COMPLETED = 'completed';
+    public const string STATUS_REJECTED  = 'rejected';
 
     protected $fillable = [
         'affiliate_id',
@@ -46,6 +54,11 @@ class AffiliateWithdrawal extends Model
 
     public function scopeCompleted($query)
     {
-        return $query->where('status', 'completed');
+        return $query->where('status', self::STATUS_COMPLETED);
+    }
+
+    public function scopeRejected($query)
+    {
+        return $query->where('status', self::STATUS_REJECTED);
     }
 }

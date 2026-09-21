@@ -10,6 +10,7 @@ use App\Models\AffiliateCommission;
 use App\Models\AffiliateProfile;
 use App\Models\AffiliateWithdrawal;
 use App\Services\AffiliateService;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -17,8 +18,10 @@ use Illuminate\Support\Str;
 
 class AffiliateController extends Controller
 {
-    public function __construct(protected AffiliateService $affiliateService)
-    {
+    public function __construct(
+        protected AffiliateService    $affiliateService,
+        protected NotificationService $notificationService,
+    ) {
     }
 
     private function getAffiliateProfile(Request $request): AffiliateProfile
@@ -172,8 +175,15 @@ class AffiliateController extends Controller
                 ]
             );
         } catch (\InvalidArgumentException $e) {
+            // Insufficient balance, or a pending withdrawal already exists for
+            // this affiliate (WS-03 §3.4 / AC-13).
             return response()->json(['message' => $e->getMessage()], 422);
         }
+
+        // Sent after the withdrawal row and the balance deduction have
+        // committed, so the notification can only describe a request that
+        // actually exists (WS-03 §5.6 / AC-19).
+        $this->notificationService->notifyAffiliateWithdrawal($affiliateProfile->fresh(), $withdrawal);
 
         return response()->json([
             'message'    => 'Permintaan pencairan berhasil diajukan.',
