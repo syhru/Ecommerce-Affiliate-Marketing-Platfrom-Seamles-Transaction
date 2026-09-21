@@ -120,7 +120,17 @@ export default function CheckoutPage() {
       ].filter(Boolean).join(', ');
 
       // Read the latest affiliate referral code from localStorage
-      const affiliateRef = localStorage.getItem('tdr_affiliate_ref') || null;
+      let affiliateRef: string | null = null;
+      try {
+        const stored = JSON.parse(localStorage.getItem('tdr_affiliate_ref') || 'null') as { code?: string; expires_at?: number } | null;
+        if (stored?.code && stored.expires_at && stored.expires_at > Date.now()) {
+          affiliateRef = stored.code;
+        } else {
+          localStorage.removeItem('tdr_affiliate_ref');
+        }
+      } catch {
+        localStorage.removeItem('tdr_affiliate_ref');
+      }
 
       const reqPayload = {
         shipping_courier: form.shipping_courier,

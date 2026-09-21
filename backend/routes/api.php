@@ -28,6 +28,7 @@ Route::post('/email/verification-notification', function (\Illuminate\Http\Reque
 // products
 Route::get('/products', [ProductController::class, 'index']);
 Route::get('/products/{slug}', [ProductController::class, 'show']);
+Route::post('/affiliate/track', [AffiliateController::class, 'track'])->middleware('throttle:60,1');
 
 // Midtrans webhook (no CSRF, no auth)
 Route::post('/webhooks/midtrans', [MidtransWebhookController::class, 'handle']);

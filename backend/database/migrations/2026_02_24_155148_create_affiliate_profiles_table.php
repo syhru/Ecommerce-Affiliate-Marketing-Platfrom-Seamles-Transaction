@@ -16,7 +16,7 @@ return new class extends Migration {
       $table->decimal('commission_rate', 5, 2)->default(10.00);
       $table->decimal('balance', 15, 2)->default(0.00);
       $table->decimal('total_earned', 15, 2)->default(0.00);
-      $table->enum('status', ['pending', 'active', 'suspended'])->default('pending');
+      $table->enum('status', ['pending', 'active', 'rejected', 'inactive'])->default('pending');
       $table->timestamp('approved_at')->nullable();
       $table->foreignId('approved_by')->nullable()->constrained('users')->nullOnDelete();
       $table->string('bank_name', 100)->nullable();
