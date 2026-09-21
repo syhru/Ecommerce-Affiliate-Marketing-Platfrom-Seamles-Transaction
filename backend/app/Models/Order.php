@@ -9,6 +9,45 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Order extends Model
 {
+    /**
+     * Canonical order status vocabulary (WS-03 §3.1 / PA-F-02).
+     *
+     * `verified` — not `paid` — is the canonical post-payment status. The
+     * progression is:
+     *
+     *     pending → verified → processing → shipped → completed
+     *
+     * with `cancelled` as the terminal state for a cancellation made before
+     * completion. `completed` and `cancelled` are both terminal.
+     */
+    public const string STATUS_PENDING    = 'pending';
+    public const string STATUS_VERIFIED   = 'verified';
+    public const string STATUS_PROCESSING = 'processing';
+    public const string STATUS_SHIPPED    = 'shipped';
+    public const string STATUS_COMPLETED  = 'completed';
+    public const string STATUS_CANCELLED  = 'cancelled';
+
+    /**
+     * Statuses an order must be in to be completed. `completed` itself is not
+     * listed here — a repeated completion is an idempotent no-op, not a
+     * re-credit, and is handled separately in OrderService::markCompleted().
+     */
+    public const array COMPLETABLE_STATUSES = [
+        self::STATUS_SHIPPED,
+    ];
+
+    /**
+     * Statuses from which an order may be cancelled. A completed order is
+     * terminal: post-completion refunds/returns are a separate flow that is
+     * out of scope for WS-03.
+     */
+    public const array CANCELLABLE_STATUSES = [
+        self::STATUS_PENDING,
+        self::STATUS_VERIFIED,
+        self::STATUS_PROCESSING,
+        self::STATUS_SHIPPED,
+    ];
+
     protected $fillable = [
         'order_number',
         'customer_id',

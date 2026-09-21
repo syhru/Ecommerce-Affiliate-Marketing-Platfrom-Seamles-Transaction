@@ -103,7 +103,9 @@ class NotificationService
                 "❌ *Pesanan Dibatalkan*\n\n" .
                 "Halo {$name},\n\n" .
                 "Pesanan *{$ordNum}* telah dibatalkan.\n\n" .
-                "Jika ada pertanyaan, silakan hubungi kami.",
+                "Jika pembayaran sudah Anda lakukan dan membutuhkan pengembalian dana, " .
+                "tim kami akan menghubungi Anda untuk memprosesnya. Jika ada pertanyaan, " .
+                "silakan hubungi kami.",
 
             default => null,
         };

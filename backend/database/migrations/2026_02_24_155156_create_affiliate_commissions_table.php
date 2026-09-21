@@ -15,8 +15,12 @@ return new class extends Migration {
       $table->foreignId('affiliate_id')->constrained('users')->onDelete('cascade');
       $table->decimal('amount', 15, 2);
       $table->decimal('commission_rate', 5, 2);
-      $table->enum('status', ['pending', 'earned', 'withdrawn'])->default('pending');
+      // The commission lifecycle: pending → earned (order completed), with
+      // `cancelled` for an order cancelled before completion, and `withdrawn`
+      // once paid out by an approved withdrawal (WS-03 §3.2, §6).
+      $table->enum('status', ['pending', 'earned', 'cancelled', 'withdrawn'])->default('pending');
       $table->timestamp('earned_at')->nullable();
+      $table->timestamp('cancelled_at')->nullable();
       $table->timestamps();
 
       $table->index('order_id');

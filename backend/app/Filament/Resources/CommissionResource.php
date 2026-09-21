@@ -28,12 +28,23 @@ class CommissionResource extends Resource
                     ->relationship('affiliate', 'name')->searchable()->preload()->required(),
                 Forms\Components\TextInput::make('amount')->numeric()->prefix('Rp')->required(),
                 Forms\Components\TextInput::make('commission_rate')->label('Rate (%)')->numeric()->required(),
-                Forms\Components\Select::make('status')->options([
+                // The commission lifecycle is owned exclusively by
+                // AffiliateService::earnCommission() and cancelCommission(),
+                // which credit balance/total_earned and void the pending
+                // commission atomically. A bare status edit here could drive
+                // `pending → earned` with no credit, so the lifecycle fields
+                // are read-only. `disabled()` also dehydrates them out of the
+                // submitted data, so they cannot be persisted through this
+                // form. There is no admin commission action in WS-03, so no
+                // alternate update path is offered (WS-03 §3.2 / R3-F-02).
+                Forms\Components\Select::make('status')->disabled()->options([
                     'pending'   => 'Pending',
                     'earned'    => 'Earned',
+                    'cancelled' => 'Cancelled',
                     'withdrawn' => 'Withdrawn',
                 ])->required()->native(false),
-                Forms\Components\DateTimePicker::make('earned_at')->nullable(),
+                Forms\Components\DateTimePicker::make('earned_at')->nullable()->disabled(),
+                Forms\Components\DateTimePicker::make('cancelled_at')->nullable()->disabled(),
             ]),
         ]);
     }
@@ -50,15 +61,18 @@ class CommissionResource extends Resource
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
                         'earned'    => 'success',
+                        'cancelled' => 'danger',
                         'withdrawn' => 'info',
                         default     => 'warning',
                     }),
                 Tables\Columns\TextColumn::make('earned_at')->dateTime('d M Y')->placeholder('—')->sortable(),
+                Tables\Columns\TextColumn::make('cancelled_at')->dateTime('d M Y')->placeholder('—')->sortable()->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('created_at')->dateTime('d M Y')->sortable()->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')->options([
-                    'pending' => 'Pending', 'earned' => 'Earned', 'withdrawn' => 'Withdrawn',
+                    'pending' => 'Pending', 'earned' => 'Earned',
+                    'cancelled' => 'Cancelled', 'withdrawn' => 'Withdrawn',
                 ]),
             ])
             ->actions([Tables\Actions\ViewAction::make()])

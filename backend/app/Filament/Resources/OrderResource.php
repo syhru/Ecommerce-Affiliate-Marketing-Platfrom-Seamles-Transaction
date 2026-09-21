@@ -109,7 +109,11 @@ class OrderResource extends Resource
                     ->relationship('customer', 'name')->searchable()->preload()->required(),
                 Forms\Components\Select::make('affiliate_id')->label('Affiliate (via referral)')
                     ->relationship('affiliate', 'name')->searchable()->preload()->nullable(),
-                Forms\Components\Select::make('status')->required()->options([
+                // The status is owned by the order lifecycle. Every transition
+                // with a financial side effect must run through OrderService
+                // (verifyPayment / markCompleted / cancelOrder), so it cannot be
+                // flipped by a bare form update here (WS-03 §5.2, §5.3).
+                Forms\Components\Select::make('status')->disabled()->options([
                     'pending'    => 'Pending',
                     'verified'   => 'Verified',
                     'processing' => 'Processing',
@@ -121,10 +125,13 @@ class OrderResource extends Resource
                 Forms\Components\TextInput::make('midtrans_transaction_id')->label('Midtrans Txn ID')->nullable(),
             ]),
             Forms\Components\Section::make('Amounts')->columns(2)->schema([
-                Forms\Components\TextInput::make('subtotal')->numeric()->prefix('Rp')->required(),
-                Forms\Components\TextInput::make('shipping_cost')->numeric()->prefix('Rp')->default(0),
-                Forms\Components\TextInput::make('commission_amount')->numeric()->prefix('Rp')->default(0),
-                Forms\Components\TextInput::make('total_amount')->numeric()->prefix('Rp')->required(),
+                // Money is computed server-side at creation (WS-02); it is not
+                // admin-editable, so an order's totals can never diverge from
+                // what the customer was charged.
+                Forms\Components\TextInput::make('subtotal')->numeric()->prefix('Rp')->required()->disabled(),
+                Forms\Components\TextInput::make('shipping_cost')->numeric()->prefix('Rp')->default(0)->disabled(),
+                Forms\Components\TextInput::make('commission_amount')->numeric()->prefix('Rp')->default(0)->disabled(),
+                Forms\Components\TextInput::make('total_amount')->numeric()->prefix('Rp')->required()->disabled(),
             ]),
             Forms\Components\Section::make('Shipping')->columns(2)->schema([
                 Forms\Components\Textarea::make('shipping_address')->rows(3)->nullable(),
