@@ -11,6 +11,12 @@ use Illuminate\Support\Facades\DB;
 
 class AffiliateService
 {
+    /**
+     * Click dedupe window (WS-04 §2.4). Repeated visits from the same
+     * `visitor_token` to the same affiliate inside this window are one click.
+     */
+    public const int CLICK_DEDUPE_WINDOW_MINUTES = 30;
+
     public function __construct(protected NotificationService $notification) {}
 
     public function recordCommission(Order $order): ?AffiliateCommission
@@ -29,7 +35,7 @@ class AffiliateService
 
         $affiliateProfile = AffiliateProfile::where('user_id', $order->affiliate_id)->first();
 
-        if (! $affiliateProfile || $affiliateProfile->status !== 'active') {
+        if (! $affiliateProfile || $affiliateProfile->status !== AffiliateProfile::STATUS_ACTIVE) {
             return null;
         }
 
@@ -250,7 +256,9 @@ class AffiliateService
     public function getStats(AffiliateProfile $profile): array
     {
         $clicks      = AffiliateClick::where('affiliate_id', $profile->user_id)->count();
-        $conversions = AffiliateCommission::where('affiliate_id', $profile->user_id)->count();
+        $conversions = Order::where('affiliate_id', $profile->user_id)
+            ->whereIn('status', [Order::STATUS_VERIFIED, Order::STATUS_PROCESSING, Order::STATUS_SHIPPED, Order::STATUS_COMPLETED])
+            ->whereNotNull('payment_verified_at')->count();
 
         return [
             'total_clicks'      => $clicks,
@@ -261,6 +269,76 @@ class AffiliateService
                                         ->sum('amount'),
             'balance'           => $profile->balance,
         ];
+    }
+
+    /**
+     * Canonical referral validation + deduplicated click tracking (WS-04
+     * §4.1–§4.4). Public and unauthenticated; the caller supplied
+     * `visitor_token` is untrusted input used only as a dedupe key.
+     *
+     * Eligibility is `active` only (§2.3). An unknown or non-active code returns
+     * a non-successful validation result and never writes a click row.
+     *
+     * Dedupe: the same `visitor_token` reaching the same affiliate inside the
+     * previous 30 minutes produces no new click (§2.4). IP is supporting
+     * telemetry only and is never part of the identity key.
+     *
+     * @return array{valid: bool, click_created: bool, referral_code?: string}
+     */
+    public function trackReferral(string $code, string $visitorToken, array $context = []): array
+    {
+        $profile = AffiliateProfile::where('referral_code', $code)
+            ->where('status', AffiliateProfile::STATUS_ACTIVE)
+            ->first();
+
+        if (! $profile) {
+            return ['valid' => false, 'click_created' => false];
+        }
+
+        return DB::transaction(function () use ($profile, $visitorToken, $context) {
+            $now = now();
+            $stateQuery = DB::table('affiliate_click_dedupe_states')
+                ->where('affiliate_id', $profile->user_id)
+                ->where('visitor_token', $visitorToken);
+            $state = $stateQuery->lockForUpdate()->first();
+
+            if (! $state) {
+                // The unique key serializes creation of the state row across
+                // independent requests; insertOrIgnore lets the loser reload
+                // and lock the row after the winner commits.
+                DB::table('affiliate_click_dedupe_states')->insertOrIgnore([
+                    'affiliate_id'  => $profile->user_id,
+                    'visitor_token' => $visitorToken,
+                    'last_clicked_at' => null,
+                    'created_at'    => $now,
+                    'updated_at'    => $now,
+                ]);
+                $state = $stateQuery->lockForUpdate()->firstOrFail();
+            }
+
+            if ($state->last_clicked_at !== null
+                && \Illuminate\Support\Carbon::parse($state->last_clicked_at)->greaterThanOrEqualTo($now->copy()->subMinutes(self::CLICK_DEDUPE_WINDOW_MINUTES))) {
+                return ['valid' => true, 'click_created' => false, 'referral_code' => $profile->referral_code];
+            }
+
+            AffiliateClick::create([
+                'affiliate_id'  => $profile->user_id,
+                'referral_code' => $profile->referral_code,
+                'visitor_token' => $visitorToken,
+                'landing_url'   => $context['landing_url'] ?? null,
+                'ip_address'    => $context['ip_address'] ?? null,
+                'user_agent'    => $context['user_agent'] ?? null,
+                'referrer_url'  => $context['referrer_url'] ?? null,
+                'clicked_at'    => $now,
+            ]);
+
+            DB::table('affiliate_click_dedupe_states')
+                ->where('affiliate_id', $profile->user_id)
+                ->where('visitor_token', $visitorToken)
+                ->update(['last_clicked_at' => $now, 'updated_at' => $now]);
+
+            return ['valid' => true, 'click_created' => true, 'referral_code' => $profile->referral_code];
+        });
     }
 
     /**
@@ -284,5 +362,84 @@ class AffiliateService
         }
 
         return compact('labels', 'clicks', 'convs');
+    }
+
+    /**
+     * The lifetime of a browser-stored referral (WS-04 §2.2). Every valid touch
+     * resets the expiry to this many days from that touch.
+     */
+    public const int REFERRAL_LIFETIME_DAYS = 30;
+
+    /** Resolve a stored browser referral, returning null for expired state. */
+    public function resolveStoredReferral(?array $stored): array
+    {
+        if (! is_array($stored) || empty($stored['code'])) {
+            return ['code' => null, 'expires_at' => null];
+        }
+
+        $expiresAt = $stored['expires_at'] ?? null;
+
+        if (! is_numeric($expiresAt) || (int) $expiresAt < now()->getTimestamp()) {
+            return ['code' => null, 'expires_at' => null];
+        }
+
+        return ['code' => (string) $stored['code'], 'expires_at' => (int) $expiresAt];
+    }
+
+    /**
+     * The only affiliate status transitions the business allows (WS-04 §2.8).
+     * Keys use literal status values so the matrix stays readable next to the
+     * model constants. `rejected` re-enters review through the user re-apply
+     * path, not through transition().
+     */
+    public const array ALLOWED_TRANSITIONS = [
+        'pending'  => ['active', 'rejected'],
+        'active'   => ['inactive'],
+        'inactive' => ['active'],
+    ];
+
+    /**
+     * Run the only allowed affiliate status transition from `$profile->status`
+     * to `$to` (WS-04 §2.8). Rejected profiles re-enter review through the
+     * user re-apply path, not through this operation.
+     *
+     * Guarded by the transition matrix, not by caller discipline, and the
+     * profile + user role write happens inside one transaction so the two can
+     * never diverge (WS-04 §5).
+     *
+     * @throws \DomainException When the transition is not an allowed business path.
+     */
+    public function transition(AffiliateProfile $profile, string $to): AffiliateProfile
+    {
+        return DB::transaction(function () use ($profile, $to) {
+            $profile = AffiliateProfile::whereKey($profile->id)->lockForUpdate()->firstOrFail();
+
+            // The caller's model may have been read before another transition
+            // committed. Only the locked, persisted status can authorize this
+            // transition.
+            if (! in_array($to, self::ALLOWED_TRANSITIONS[$profile->status] ?? [], true)) {
+                throw new \DomainException('Transisi status affiliate tidak valid.');
+            }
+
+            $profile->update([
+                'status' => $to,
+                'approved_at' => $to === 'active' ? ($profile->approved_at ?? now()) : $profile->approved_at,
+                'approved_by' => $to === 'active' ? ($profile->approved_by ?? auth()->id()) : $profile->approved_by,
+            ]);
+            $profile->user()->update(['role' => $to === 'active' ? 'affiliate' : 'customer']);
+            return $profile->fresh();
+        });
+    }
+
+    public function reapply(AffiliateProfile $profile, array $data): AffiliateProfile
+    {
+        if ($profile->status !== AffiliateProfile::STATUS_REJECTED) {
+            throw new \DomainException('Profil affiliate tidak dapat mendaftar ulang.');
+        }
+        return DB::transaction(function () use ($profile, $data) {
+            $profile->update(array_merge($data, ['status' => AffiliateProfile::STATUS_PENDING, 'approved_at' => null, 'approved_by' => null]));
+            $profile->user()->update(['role' => 'affiliate']);
+            return $profile->fresh();
+        });
     }
 }

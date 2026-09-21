@@ -31,7 +31,7 @@ class AffiliateResource extends Resource
                     'active'   => 'Active',
                     'rejected' => 'Rejected',
                     'inactive' => 'Inactive',
-                ])->required()->native(false),
+                ])->required()->native(false)->disabled(),
                 Forms\Components\TextInput::make('balance')->numeric()->prefix('Rp')->default(0),
                 Forms\Components\TextInput::make('total_earned')->numeric()->prefix('Rp')->default(0),
             ]),

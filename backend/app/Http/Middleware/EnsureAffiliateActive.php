@@ -30,7 +30,6 @@ class EnsureAffiliateActive
         if ($profile->status !== 'active') {
             $msg = match ($profile->status) {
                 'pending'   => 'Akun afiliasi kamu sedang menunggu persetujuan admin.',
-                'suspended' => 'Akun afiliasi kamu telah dinonaktifkan.',
                 default     => 'Akun afiliasi kamu tidak aktif.',
             };
             return $this->deny($request, $msg, 403);

@@ -35,63 +35,63 @@ class AffiliateController extends Controller
         $user = $request->user();
         $existingProfile = $user->affiliateProfile;
 
-        // Jika sudah ada profil dan masih pending/active, tolak
-        if ($existingProfile && in_array($existingProfile->status, ['pending', 'active'])) {
+        if ($existingProfile && in_array($existingProfile->status, [AffiliateProfile::STATUS_PENDING, AffiliateProfile::STATUS_ACTIVE], true)) {
             return response()->json([
-              'message' => 'Anda sudah terdaftar sebagai affiliate.',
-              'profile' => new AffiliateProfileResource($existingProfile),
+                'message' => 'Anda sudah terdaftar sebagai affiliate.',
+                'profile' => new AffiliateProfileResource($existingProfile),
             ], 422);
         }
 
         $data = $request->validate([
-          'bank_name'           => ['required', 'string', 'max:100'],
-          'bank_account_number' => ['required', 'string', 'max:50'],
-          'bank_account_holder' => ['required', 'string', 'max:255'],
+            'bank_name' => ['required', 'string', 'max:100'],
+            'bank_account_number' => ['required', 'string', 'max:50'],
+            'bank_account_holder' => ['required', 'string', 'max:255'],
         ]);
 
-        if ($existingProfile && in_array($existingProfile->status, ['inactive', 'rejected'])) {
-            // Re-register: update profil yang sudah ada kembali ke pending
-            $existingProfile->update([
-              'status'              => 'pending',
-              'bank_name'           => $data['bank_name'],
-              'bank_account_number' => $data['bank_account_number'],
-              'bank_account_holder' => $data['bank_account_holder'],
-              'approved_at'         => null,
-              'approved_by'         => null,
-            ]);
-
-            $user->update(['role' => 'affiliate']);
-
+        if ($existingProfile && $existingProfile->status === AffiliateProfile::STATUS_REJECTED) {
+            $updated = $this->affiliateService->reapply($existingProfile, $data);
             return response()->json([
-              'message' => 'Pendaftaran ulang affiliate berhasil! Tunggu persetujuan admin.',
-              'profile' => new AffiliateProfileResource($existingProfile->fresh()),
+                'message' => 'Pendaftaran ulang affiliate berhasil! Tunggu persetujuan admin.',
+                'profile' => new AffiliateProfileResource($updated),
             ], 201);
         }
 
-        // Baru pertama kali daftar
-        do {
-            $code = strtoupper(Str::random(8));
-        } while (AffiliateProfile::where('referral_code', $code)->exists());
+        if ($existingProfile) {
+            return response()->json(['message' => 'Profil affiliate tidak dapat mendaftar ulang.'], 422);
+        }
 
         $profile = AffiliateProfile::create([
-          'user_id'             => $user->id,
-          'referral_code'       => $code,
-          'commission_rate'     => 10,
-          'balance'             => 0,
-          'total_earned'        => 0,
-          'status'              => 'pending',
-          'bank_name'           => $data['bank_name'],
-          'bank_account_number' => $data['bank_account_number'],
-          'bank_account_holder' => $data['bank_account_holder'],
+            'user_id' => $user->id,
+            'referral_code' => AffiliateProfile::generateReferralCode(),
+            'commission_rate' => 10,
+            'balance' => 0,
+            'total_earned' => 0,
+            'status' => AffiliateProfile::STATUS_PENDING,
+            'bank_name' => $data['bank_name'],
+            'bank_account_number' => $data['bank_account_number'],
+            'bank_account_holder' => $data['bank_account_holder'],
         ]);
 
-        // Update user role to affiliate
         $user->update(['role' => 'affiliate']);
 
         return response()->json([
-          'message' => 'Pendaftaran affiliate berhasil! Tunggu persetujuan admin.',
-          'profile' => new AffiliateProfileResource($profile),
+            'message' => 'Pendaftaran affiliate berhasil! Tunggu persetujuan admin.',
+            'profile' => new AffiliateProfileResource($profile),
         ], 201);
+    }
+
+    /** POST /api/affiliate/track */
+    public function track(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'referral_code' => ['required', 'string', 'max:20'],
+            'visitor_token' => ['required', 'string', 'max:128'],
+            'landing_url' => ['nullable', 'url', 'max:1000'],
+        ]);
+        return response()->json($this->affiliateService->trackReferral($data['referral_code'], $data['visitor_token'], [
+            'landing_url' => $data['landing_url'] ?? null, 'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(), 'referrer_url' => $request->headers->get('referer'),
+        ]));
     }
 
     /** GET /api/affiliate/dashboard */

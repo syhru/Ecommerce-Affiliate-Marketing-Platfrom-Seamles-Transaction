@@ -12,6 +12,9 @@ class AffiliateClick extends Model
 
     protected $fillable = [
         'affiliate_id',
+        'referral_code',
+        'visitor_token',
+        'landing_url',
         'ip_address',
         'user_agent',
         'referrer_url',

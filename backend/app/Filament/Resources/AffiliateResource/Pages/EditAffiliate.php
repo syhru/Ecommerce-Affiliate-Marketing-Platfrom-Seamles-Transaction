@@ -3,6 +3,8 @@
 namespace App\Filament\Resources\AffiliateResource\Pages;
 
 use App\Filament\Resources\AffiliateResource;
+use App\Models\AffiliateProfile;
+use App\Services\AffiliateService;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
 
@@ -12,7 +14,26 @@ class EditAffiliate extends EditRecord
 
     protected function getHeaderActions(): array
     {
-        return [Actions\ViewAction::make(), Actions\DeleteAction::make()];
+        return [
+            Actions\ViewAction::make(),
+            Actions\Action::make('approve')
+                ->label('Approve')->requiresConfirmation()
+                ->visible(fn () => $this->record->status === AffiliateProfile::STATUS_PENDING)
+                ->action(fn () => app(AffiliateService::class)->transition($this->record, AffiliateProfile::STATUS_ACTIVE)),
+            Actions\Action::make('reject')
+                ->label('Reject')->requiresConfirmation()->color('danger')
+                ->visible(fn () => $this->record->status === AffiliateProfile::STATUS_PENDING)
+                ->action(fn () => app(AffiliateService::class)->transition($this->record, AffiliateProfile::STATUS_REJECTED)),
+            Actions\Action::make('deactivate')
+                ->label('Deactivate')->requiresConfirmation()->color('warning')
+                ->visible(fn () => $this->record->status === AffiliateProfile::STATUS_ACTIVE)
+                ->action(fn () => app(AffiliateService::class)->transition($this->record, AffiliateProfile::STATUS_INACTIVE)),
+            Actions\Action::make('reactivate')
+                ->label('Reactivate')->requiresConfirmation()
+                ->visible(fn () => $this->record->status === AffiliateProfile::STATUS_INACTIVE)
+                ->action(fn () => app(AffiliateService::class)->transition($this->record, AffiliateProfile::STATUS_ACTIVE)),
+            Actions\DeleteAction::make(),
+        ];
     }
 
     protected function getRedirectUrl(): string
@@ -20,40 +41,4 @@ class EditAffiliate extends EditRecord
         return $this->getResource()::getUrl('index');
     }
 
-    protected function afterSave(): void
-    {
-        $profile = $this->record;
-        $user = $profile->user;
-
-        if (!$user) {
-            return;
-        }
-
-        // Jika status affiliate diubah menjadi 'active' → role user = affiliate
-        if ($profile->status === 'active') {
-            if ($user->role !== 'affiliate') {
-                $user->update(['role' => 'affiliate']);
-            }
-            if (!$profile->approved_at) {
-                $profile->update([
-                    'approved_at' => now(),
-                    'approved_by' => auth()->id(),
-                ]);
-            }
-        }
-
-        // Jika status affiliate diubah menjadi 'inactive' → role user = customer
-        if ($profile->status === 'inactive') {
-            if ($user->role === 'affiliate') {
-                $user->update(['role' => 'customer']);
-            }
-        }
-
-        // Jika status affiliate diubah menjadi 'rejected' → role user = customer
-        if ($profile->status === 'rejected') {
-            if ($user->role === 'affiliate') {
-                $user->update(['role' => 'customer']);
-            }
-        }
-    }
 }

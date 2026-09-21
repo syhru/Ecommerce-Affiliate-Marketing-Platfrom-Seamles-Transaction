@@ -11,6 +11,19 @@ use Illuminate\Support\Str;
 class AffiliateProfile extends Model
 {
     use HasFactory;
+
+    public const string STATUS_PENDING  = 'pending';
+    public const string STATUS_ACTIVE   = 'active';
+    public const string STATUS_REJECTED = 'rejected';
+    public const string STATUS_INACTIVE = 'inactive';
+
+    public const array STATUSES = [
+        self::STATUS_PENDING,
+        self::STATUS_ACTIVE,
+        self::STATUS_REJECTED,
+        self::STATUS_INACTIVE,
+    ];
+
     protected $fillable = [
         'user_id',
         'referral_code',
