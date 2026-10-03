@@ -1,31 +1,11 @@
 // ============================================================
-// Types: Auth & User
-// sesuai dengan API response dari Laravel Sanctum
+// Types: Auth
+// Consolidated to use types/user.ts as canonical reference
 // ============================================================
 
-export interface User {
-  id: number;
-  name: string;
-  email: string;
-  role: 'superadmin' | 'affiliate' | 'customer';
-  telegram_chat_id: string | null;
-  email_verified: boolean;
-  is_active: boolean;
-  created_at: string;
-}
-
-export interface LoginRequest {
-  email: string;
-  password: string;
-}
-
-export interface LoginResponse {
-  token: string;       // plainTextToken dari Sanctum
-  user: User;
-}
-
-export interface AuthState {
-  user: User | null;
-  token: string | null;
-  isAuthenticated: boolean;
-}
+export type {
+  User,
+  LoginCredentials,
+  LoginCredentials as LoginRequest,
+  LoginResponse,
+} from './user';

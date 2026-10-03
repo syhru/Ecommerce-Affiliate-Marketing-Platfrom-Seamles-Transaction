@@ -5,33 +5,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiGet, apiPost } from '@/src/lib/api';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
-import { toast } from 'sonner';
-
 // ─── Types ────────────────────────────────────────────────────
-interface AffiliateDashboardData {
-  stats: {
-    balance: number;
-    total_commission: number;
-  };
-}
-
-interface AffiliateProfile {
-  bank_name: string;
-  bank_account_number: string;
-  bank_account_holder: string;
-}
-
-interface Withdrawal {
-  id: number;
-  amount: number;
-  status: 'pending' | 'approved' | 'rejected';
-  bank_name: string;
-  bank_account_number: string;
-  bank_account_holder: string;
-  created_at: string;
-}
+// Envelope `GET /affiliate/profile` adalah BARE AffiliateProfileResource
+// (tidak dibungkus `data`), sama seperti `GET /user`.
+// `GET /affiliate/withdrawals` = paginator Eloquent mentah.
+import type {
+  AffiliateDashboardData,
+  AffiliateProfile,
+  Withdrawal,
+} from '@/src/types/affiliate';
 
 interface WithdrawalsResponse {
   data: Withdrawal[];
@@ -41,28 +23,25 @@ interface WithdrawalsResponse {
 }
 
 // ─── Format & Helper ──────────────────────────────────────────
-const formatRupiah = (amount: number) =>
-  new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
-
-const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleDateString('id-ID', {
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  }) + ' WIB';
-};
+import { formatDate, formatRupiah } from '@/src/lib/format';
+import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useState } from 'react';
+import { toast } from 'sonner';
 
 import { useUserStore } from '@/src/stores/useUserStore';
 
 // ─── Status Badge ──────────────────────────────────────────────
+// AffiliateWithdrawal::STATUS_* = pending | completed | rejected.
 function StatusBadge({ status }: { status: string }) {
   switch (status) {
     case 'pending':
       return <span className="px-2.5 py-1 rounded-md bg-amber-500/15 text-amber-500 font-semibold text-[10px] uppercase tracking-wider border border-amber-500/30">Menunggu</span>;
-    case 'approved':
-      return <span className="px-2.5 py-1 rounded-md bg-emerald-500/15 text-emerald-400 font-semibold text-[10px] uppercase tracking-wider border border-emerald-500/30">Disetujui</span>;
+    case 'completed':
+      return <span className="px-2.5 py-1 rounded-md bg-emerald-500/15 text-emerald-400 font-semibold text-[10px] uppercase tracking-wider border border-emerald-500/30">Selesai</span>;
     case 'rejected':
       return <span className="px-2.5 py-1 rounded-md bg-red-500/15 text-red-400 font-semibold text-[10px] uppercase tracking-wider border border-red-500/30">Ditolak</span>;
     default:
+      // Status tak dikenal jangan dipalsukan sebagai "Ditolak".
       return <span className="px-2.5 py-1 rounded-md bg-slate-700 text-slate-300 font-semibold text-[10px] uppercase tracking-wider">{status}</span>;
   }
 }
@@ -91,10 +70,10 @@ export default function AffiliateWithdrawPage() {
       const dashRes = await apiGet<AffiliateDashboardData>('/affiliate/dashboard');
       setBalance(dashRes.stats.balance);
 
-      // Endpoint 2: Profile for bank details (assuming /api/affiliate/profile exists per routes/api.php)
-      // Wait, there's `GET /api/affiliate/profile` in routes/api.php.
-      const profRes = await apiGet<{ data: AffiliateProfile }>('/affiliate/profile');
-      setProfile(profRes.data);
+      // Endpoint 2: Profile for bank details. `GET /affiliate/profile`
+      // mengembalikan BARE AffiliateProfileResource (tanpa pembungkus `data`).
+      const profRes = await apiGet<AffiliateProfile>('/affiliate/profile');
+      setProfile(profRes);
 
       // Endpoint 3: History
       const histRes = await apiGet<WithdrawalsResponse>('/affiliate/withdrawals?per_page=5');

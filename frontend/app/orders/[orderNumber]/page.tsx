@@ -5,55 +5,16 @@ import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiGet } from '@/src/lib/api';
+import { formatDate, formatRupiah } from '@/src/lib/format';
+import type { Order } from '@/src/types/order';
 import type { User } from '@/src/types/user';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
-// ─── Types ────────────────────────────────────────────────────
-interface TrackingLog {
-  id: number;
-  status: string;
-  status_title: string;
-  description: string | null;
-  created_at: string;
-}
-
-interface OrderItem {
-  id: number;
-  product_name: string;
-  quantity: number;
-  subtotal: number;
-  affiliate_code: string | null;
-}
-
-interface OrderDetail {
-  id: number;
-  order_number: string;
-  status: 'pending' | 'verified' | 'processing' | 'shipped' | 'completed' | 'cancelled';
-  total_amount: number;
-  payment_method: string | null;
-  payment_verified_at: string | null;
-  shipping_courier: string | null;
-  shipping_tracking_number: string | null;
-  shipping_address: string | null;
-  created_at: string;
-  items: OrderItem[];
-  trackingLogs: TrackingLog[]; // Returned as trackingLogs camelCase or tracking_logs in API? In Laravel show() it says trackingLogs. We will handle both safely.
-  customer: User;
-}
-
+// ─── Types: pakai wire format dari src/types ──
+import type { OrderItem, TrackingLog } from '@/src/types/order';
 import { useUserStore } from '@/src/stores/useUserStore';
-
-const formatRupiah = (amount: number) =>
-  new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
-
-const formatDate = (dateStr: string) => {
-  return new Date(dateStr).toLocaleDateString('id-ID', {
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  }) + ' WIB';
-};
 
 const getStatusBadge = (status: string) => {
   const map: Record<string, { label: string, color: string, icon: string }> = {
@@ -82,7 +43,7 @@ export default function OrderTrackingPage() {
   const orderNumber = params.orderNumber as string;
 
   const { user, isLoading: isStoreLoading } = useUserStore();
-  const [order, setOrder] = useState<OrderDetail | null>(null);
+  const [order, setOrder] = useState<Order | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Bersihkan query params bawaan Midtrans (?order_id=...&status_code=...&transaction_status=...)
@@ -102,8 +63,7 @@ export default function OrderTrackingPage() {
 
     const loadOrderDetail = async () => {
       try {
-        // We use ANY to handle JSON since standard Laravel Resource returns inside { data: ... }
-        const res = await apiGet<{ data: OrderDetail }>(`/orders/${orderNumber}`);
+        const res = await apiGet<{ data: Order }>(`/orders/${orderNumber}`);
         setOrder(res.data);
       } catch (err: unknown) {
         toast.error('Gagal memuat detail pesanan. Pastikan kamu memiliki akses.');
@@ -134,7 +94,8 @@ export default function OrderTrackingPage() {
   if (!order) return null;
 
   // Handle resource property keys properly
-  const logs = (order as unknown as { tracking_logs?: TrackingLog[] }).tracking_logs || order.trackingLogs || [];
+  const logs = order.tracking_logs ?? [];
+  const items = order.items ?? [];
 
   return (
     <main className="min-h-screen flex flex-col bg-slate-50">
@@ -214,21 +175,16 @@ export default function OrderTrackingPage() {
 
             <Card className="bg-white border-slate-200 shadow-sm rounded-2xl overflow-hidden">
               <CardHeader className="pb-3 border-b border-slate-100 bg-slate-50/50">
-                <CardTitle className="text-slate-800 text-base">Daftar Produk ({order.items.length})</CardTitle>
+                <CardTitle className="text-slate-800 text-base">Daftar Produk ({items.length})</CardTitle>
               </CardHeader>
               <CardContent className="pt-4 p-0">
                 <div className="divide-y divide-slate-100">
-                  {order.items.map(item => (
+                  {items.map(item => (
                     <div key={item.id} className="p-4 flex flex-col md:flex-row justify-between md:items-center gap-3">
                       <div>
                         <p className="text-slate-800 font-medium">{item.product_name}</p>
                         <div className="flex items-center gap-2 mt-1">
                           <span className="text-slate-500 text-sm">x {item.quantity}</span>
-                          {item.affiliate_code && (
-                            <span className="px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-600 text-[10px] uppercase font-bold tracking-wider flex items-center gap-1">
-                              <span>🏷️</span> REF: {item.affiliate_code}
-                            </span>
-                          )}
                         </div>
                       </div>
                       <div className="text-slate-700 font-semibold md:text-right">

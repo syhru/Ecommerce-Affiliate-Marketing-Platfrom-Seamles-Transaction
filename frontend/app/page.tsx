@@ -25,10 +25,10 @@ function ProductCard({ product }: { product: Product }) {
     <Card className="bg-white border-slate-200 hover:border-amber-500/50 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl flex flex-col overflow-hidden group">
       {/* Thumbnail */}
       <div className="relative h-48 bg-slate-100 overflow-hidden shrink-0">
-        {product.thumbnailUrl ? (
+        {product.thumbnail_url ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
-            src={product.thumbnailUrl.startsWith('http') ? product.thumbnailUrl : `http://localhost:8000/storage/${product.thumbnailUrl}`}
+            src={product.thumbnail_url.startsWith('http') ? product.thumbnail_url : `http://localhost:8000/storage/${product.thumbnail_url}`}
             alt={product.name}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
           />

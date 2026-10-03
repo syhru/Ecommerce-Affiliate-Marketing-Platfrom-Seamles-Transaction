@@ -4,54 +4,18 @@ import { Footer } from '@/components/Footer';
 import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { apiGet } from '@/src/lib/api';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 // ─── Types ────────────────────────────────────────────────────
-interface TrackingLog {
-  status: string;
-  status_title: string;
-  description: string | null;
-  created_at: string;
-}
-
-interface OrderItem {
-  id: number;
-  product_name: string;
-  quantity: number;
-  subtotal: number;
-}
-
-interface Order {
-  id: number;
-  order_number: string;
-  status: string;
-  total_amount: number;
-  created_at: string;
-  items: OrderItem[];
-  tracking_logs: TrackingLog[]; // Assumed format from resource
-}
-
-interface OrdersResponse {
-  data: Order[];
-  current_page: number;
-  last_page: number;
-  total: number;
-}
-
+import { apiGet } from '@/src/lib/api';
+import { formatDate, formatRupiah } from '@/src/lib/format';
+import type { Order } from '@/src/types/order';
+import type { Paginated } from '@/src/types/order';
 import { useUserStore } from '@/src/stores/useUserStore';
 
-const formatRupiah = (amount: number) =>
-  new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
-
-const formatDate = (dateStr: string) => {
-  return new Date(dateStr).toLocaleDateString('id-ID', {
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  }) + ' WIB';
-};
+type OrdersResponse = Paginated<Order>;
 
 const getStatusBadge = (status: string) => {
   const map: Record<string, { label: string, color: string, icon: string }> = {
@@ -107,7 +71,6 @@ export default function OrdersPage() {
       setIsLoading(false);
     }
   };
-
   return (
     <main className="min-h-screen bg-[#f8f9fa] font-sans pt-16 flex flex-col">
       <Navbar />
@@ -185,13 +148,13 @@ export default function OrdersPage() {
 
                         {/* Products preview */}
                         <div className="text-sm text-slate-600 line-clamp-2 leading-relaxed bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-                          {order.items.slice(0, 2).map(item => (
+                          {(order.items ?? []).slice(0, 2).map(item => (
                             <span key={item.id} className="mr-2 after:content-[','] last:after:content-[''] font-medium">
                               <span className="text-amber-600 font-bold">{item.quantity}x</span> {item.product_name}
                             </span>
                           ))}
-                          {order.items.length > 2 && (
-                            <span className="italic text-slate-400 font-medium">+ {order.items.length - 2} produk lainnya</span>
+                          {(order.items ?? []).length > 2 && (
+                            <span className="italic text-slate-400 font-medium">+ {(order.items ?? []).length - 2} produk lainnya</span>
                           )}
                         </div>
                       </div>

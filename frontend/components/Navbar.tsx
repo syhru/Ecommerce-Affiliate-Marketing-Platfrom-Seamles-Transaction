@@ -177,9 +177,10 @@ export function Navbar() {
   const isGuest = isHydrated && user === null;
   const isPending = isUserLoaded && user?.affiliate_profile?.status === 'pending';
   const isRejected = isUserLoaded && user?.affiliate_profile?.status === 'rejected';
+  const isInactive = isUserLoaded && user?.affiliate_profile?.status === 'inactive';
   const isAffiliate = isUserLoaded && user?.role === 'affiliate' && user?.affiliate_profile?.status === 'active';
   const isVerified = isUserLoaded && user.email_verified;
-  const isStandardUser = isUserLoaded && ((user?.role as string) === 'user' || user?.role === 'customer') && !isPending && !isAffiliate && !isRejected;
+  const isStandardUser = isUserLoaded && ((user?.role as string) === 'user' || user?.role === 'customer') && !isPending && !isAffiliate && !isRejected && !isInactive;
 
   const navBaseClasses = "fixed top-0 inset-x-0 z-50 transition-all duration-300 border-b";
   const navScrolledClasses = "bg-white/80 backdrop-blur-md border-slate-200 shadow-sm py-3";
@@ -222,6 +223,9 @@ export function Navbar() {
             )}
             {isVerified && isRejected && (
               <Link href="/affiliate/rejected" prefetch={false} scroll={false} className="hover:text-amber-500 transition-colors">Daftar Affiliate</Link>
+            )}
+            {isVerified && isInactive && (
+              <Link href="/affiliate/inactive" prefetch={false} scroll={false} className="hover:text-amber-500 transition-colors">Status Affiliate</Link>
             )}
             {isVerified && user && user.role === 'superadmin' && (
               <button type="button" onClick={handleOpenAdminPanel} className="hover:text-amber-500 transition-colors cursor-pointer">Admin Panel</button>
@@ -300,6 +304,7 @@ export function Navbar() {
           {isVerified && isPending && <Link href="/affiliate/pending" prefetch={false} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Jadi Affiliate</Link>}
           {isVerified && isAffiliate && <Link href="/affiliate/dashboard" prefetch={false} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Dashboard Affiliate</Link>}
           {isVerified && isRejected && <Link href="/affiliate/rejected" prefetch={false} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Daftar Affiliate</Link>}
+          {isVerified && isInactive && <Link href="/affiliate/inactive" prefetch={false} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Status Affiliate</Link>}
           {isVerified && user && user.role === 'superadmin' && <button type="button" onClick={handleOpenAdminPanel} className="text-slate-700 font-semibold px-2 py-1 text-left cursor-pointer">Admin Panel</button>}
           
           <hr className="border-slate-100 my-2" />

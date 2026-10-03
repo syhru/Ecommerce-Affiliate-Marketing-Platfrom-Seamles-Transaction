@@ -1,45 +1,31 @@
 // ============================================================
-// Auth Helpers — login, logout, getUser, isLoggedIn
-// Token disimpan di cookie agar bisa dibaca oleh middleware
+// Auth Actions — login, register, logout, verification, cleanup.
+//
+// Truth: `GET /user` (divalidasi server). Kehadiran cookie hanya HINT untuk
+// memvalidasi, tidak pernah bukti authenticated. Credential stale/expired/revoked
+// dibersihkan otomatis sehingga aplikasi converge ke guest tanpa intervensi
+// manual pengguna.
 // ============================================================
 
 import { apiPost } from '@/src/lib/api';
+import { clearAuthCookie, getTokenFromCookie, setAuthCookie } from '@/src/lib/auth-cookie';
 import { useUserStore } from '@/src/stores/useUserStore';
-import type { LoginRequest, LoginResponse } from '@/src/types/auth';
-
-const TOKEN_KEY  = 'auth_token';
-
-// ── Cookie helpers ───────────────────────────────────────────
-
-// Session cookie (tanpa Max-Age/Expires) → otomatis terhapus saat browser
-// ditutup, sehingga sesi tidak persisten dan user harus login ulang.
-export const setAuthCookie = (token: string): void => {
-  document.cookie = [
-    `${TOKEN_KEY}=${encodeURIComponent(token)}`,
-    'Path=/',
-    'SameSite=Lax',
-    // 'Secure', // aktifkan saat production (HTTPS)
-  ].join('; ');
-};
-
-export const clearAuthCookie = (): void => {
-  document.cookie = `${TOKEN_KEY}=; Max-Age=0; Path=/`;
-};
-
-export const getTokenFromCookie = (): string | null => {
-  if (typeof document === 'undefined') return null;
-  const match = document.cookie.match(/(?:^|;\s*)auth_token=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : null;
-};
-
-// ── Auth actions ─────────────────────────────────────────────
+import type { LoginCredentials, LoginResponse, RegisterPayload, RegisterResponse } from '@/src/types/user';
 
 /**
  * Login memanggil endpoint autentikasi Laravel yang aktif.
  * Menyimpan token ke cookie dan user ke localStorage
  */
-export const login = async (credentials: LoginRequest): Promise<LoginResponse> => {
+export const login = async (credentials: LoginCredentials): Promise<LoginResponse> => {
   const response = await apiPost<LoginResponse>('/login', credentials);
+
+  setAuthCookie(response.token);
+
+  return response;
+};
+
+export const register = async (payload: RegisterPayload): Promise<RegisterResponse> => {
+  const response = await apiPost<RegisterResponse>('/register', payload);
 
   setAuthCookie(response.token);
 
@@ -69,8 +55,7 @@ export const logout = async (): Promise<void> => {
 };
 
 /**
- * Cek apakah user sudah login (token ada di cookie)
+ * Apakah ada credential tersimpan. Ini HINT untuk memicu validasi ke
+ * `GET /user`, bukan bukti authenticated.
  */
-export const isLoggedIn = (): boolean => {
-  return Boolean(getTokenFromCookie());
-};
+export const hasAuthCredential = (): boolean => Boolean(getTokenFromCookie());

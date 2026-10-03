@@ -1,6 +1,15 @@
+'use client';
+
 import Link from 'next/link';
+import { useEffect } from 'react';
+import { useUserStore } from '@/src/stores/useUserStore';
 
 export default function EmailVerifiedPage() {
+  const fetchUser = useUserStore((state) => state.fetchUser);
+
+  useEffect(() => {
+    void fetchUser();
+  }, [fetchUser]);
   return (
     <main className="min-h-screen bg-white px-6 py-24 text-slate-900">
       <div className="mx-auto max-w-lg border-l-4 border-amber-500 pl-6">

@@ -68,7 +68,7 @@ export default function AffiliateDashboardPage() {
       return;
     }
     
-    // Guard: hanya affiliate aktif yang boleh masuk
+    // Only active affiliates may load dashboard data.
     const affiliateStatus = user.affiliate_profile?.status;
 
     if (affiliateStatus === 'pending') {
@@ -76,12 +76,12 @@ export default function AffiliateDashboardPage() {
       return;
     }
 
-    if (affiliateStatus === 'rejected') {
-      router.replace('/affiliate/rejected');
+    if (affiliateStatus === 'rejected' || affiliateStatus === 'inactive') {
+      router.replace(`/affiliate/${affiliateStatus}`);
       return;
     }
 
-    // Jika bukan affiliate aktif (customer biasa, inactive, atau tanpa profil) → redirect ke beranda
+    // Jika bukan affiliate aktif → redirect ke beranda
     if (user.role !== 'affiliate' || affiliateStatus !== 'active') {
       router.replace('/');
       return;
