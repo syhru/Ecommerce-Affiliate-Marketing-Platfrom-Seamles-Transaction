@@ -100,7 +100,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
           product_name: productObj.name,
           product_price: productObj.price,
           product_slug: productObj.slug,
-          thumbnail_url: productObj.thumbnailUrl,
+          thumbnail_url: productObj.thumbnail_url,
           stock: productObj.stock,
           quantity: qty,
           affiliate_code: getAffiliateCode()
@@ -149,7 +149,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
       product_name: product.name,
       product_price: product.price,
       product_slug: product.slug,
-      thumbnail_url: product.thumbnailUrl,
+      thumbnail_url: product.thumbnail_url,
       stock: product.stock,
       quantity: quantity,
       affiliate_code: getAffiliateCode()
@@ -176,8 +176,8 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
 
   // Parse Specs jika ada
   let parsedSpecs: Record<string, string> = {};
-  if (product.technicalSpecs) {
-    product.technicalSpecs.split('\n').forEach(line => {
+  if (product.technical_specs) {
+    product.technical_specs.split('\n').forEach((line: string) => {
       if (line.includes(':')) {
         const [k, v] = line.split(':');
         parsedSpecs[k.trim()] = v.trim();
@@ -205,10 +205,10 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
           {/* ── Kiri: Gambar Produk ── */}
           <div className="md:col-span-5">
             <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 flex items-center justify-center min-h-[400px] md:sticky top-28">
-              {product.thumbnailUrl ? (
+              {product.thumbnail_url ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img
-                  src={getImageUrl(product.thumbnailUrl) || ''}
+                  src={getImageUrl(product.thumbnail_url) || ''}
                   alt={product.name}
                   className="w-full h-auto object-contain max-h-[450px] transition-transform hover:scale-105 duration-500"
                 />

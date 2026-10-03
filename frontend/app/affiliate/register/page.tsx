@@ -35,14 +35,8 @@ const PAYMENT_OPTIONS = {
 
 const isEwallet = (v: string) => ['OVO', 'GoPay', 'DANA', 'ShopeePay'].includes(v);
 
+import { hasAuthCredential } from '@/src/lib/auth';
 import { useUserStore } from '@/src/stores/useUserStore';
-
-// ─── Token / User helpers ─────────────────────────────────────
-function getToken(): string | null {
-  if (typeof document === 'undefined') return null;
-  const m = document.cookie.match(/(?:^|;\s*)auth_token=([^;]*)/);
-  return m ? decodeURIComponent(m[1]) : null;
-}
 
 // ─── Step indicator ────────────────────────────────────────────
 const HOW_IT_WORKS = [
@@ -60,16 +54,27 @@ export default function AffiliateRegisterPage() {
   const [accountNumber, setAccountNumber] = useState('');
   const [accountHolder, setAccountHolder] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isBlockedUnverified, setIsBlockedUnverified] = useState(false);
 
-  // Guard: must be logged in & status check
+  // Verifikasi email dulu, baru form bank. Gate client-side ini
+  // explanatory; backend `verified` middleware tetap otoritatif.
+  const isUnverified = user !== null && user.email_verified === false;
+
+  // Guard: must be logged in, verified & status check
   useEffect(() => {
     if (isStoreLoading) return;
 
-    if (!user || !getToken()) {
+    if (!user || !hasAuthCredential()) {
       toast.info('Kamu perlu login dulu untuk mendaftar affiliate.');
       router.push('/login?redirect=/affiliate/register');
       return;
     }
+
+    if (user.email_verified === false) {
+      setIsBlockedUnverified(true);
+      return;
+    }
+    setIsBlockedUnverified(false);
 
     if (user.role === 'affiliate' && user.affiliate_profile?.status === 'pending') {
       router.replace('/affiliate/pending');
@@ -129,6 +134,47 @@ export default function AffiliateRegisterPage() {
   };
 
   if (!user) return null; // loading / redirect in progress
+
+  // User terautentikasi tapi belum verifikasi → jangan render form bank.
+  // Tampilkan penjelasan + recovery path; backend `verified` tetap otoritatif.
+  if (isBlockedUnverified || isUnverified) {
+    return (
+      <main className="min-h-screen bg-[#f8f9fa] flex flex-col pt-16">
+        <Navbar />
+        <div className="flex-1 w-full max-w-xl mx-auto py-10 px-4">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-amber-100 border-2 border-amber-200 mb-5 shadow-sm">
+              <span className="text-4xl">✉️</span>
+            </div>
+            <h1 className="text-slate-900 font-extrabold text-2xl">Verifikasi Email Dulu</h1>
+            <p className="text-slate-600 font-medium text-sm mt-3 px-4">
+              Pendaftaran affiliate membutuhkan email yang sudah diverifikasi.
+              Form data rekening akan terbuka setelah akun kamu terverifikasi.
+            </p>
+          </div>
+          <Card className="bg-white border-slate-200 shadow-lg shadow-slate-200/50 rounded-2xl mb-8">
+            <CardContent className="pt-6 flex flex-col gap-3">
+              <Button
+                type="button"
+                onClick={() => router.push('/profile')}
+                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-6 rounded-xl transition-all"
+              >
+                Ke Pengaturan Profil &amp; Verifikasi
+              </Button>
+              <Button
+                type="button"
+                onClick={() => router.push('/shop')}
+                className="w-full bg-white border-2 border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-bold py-6 rounded-xl transition-all"
+              >
+                Kembali Belanja
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+        <Footer />
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-[#f8f9fa] flex flex-col pt-16">

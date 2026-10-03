@@ -1,51 +1,65 @@
-import { apiGet } from '@/src/lib/api';
+import { ApiError, apiGet } from '@/src/lib/api';
+import { clearAuthCookie, getTokenFromCookie } from '@/src/lib/auth-cookie';
 import type { User } from '@/src/types/user';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
+type AuthStatus = 'unknown' | 'validating' | 'authenticated' | 'guest';
+
 interface UserState {
   user: User | null;
+  authStatus: AuthStatus;
   isLoading: boolean;
   setUser: (user: User | null) => void;
   fetchUser: () => Promise<void>;
   clearUser: () => void;
 }
 
+// Generation guards prevent a request started before logout/token replacement
+// from restoring authenticated state after local cleanup.
+let generation = 0;
+
 export const useUserStore = create<UserState>()(
   persist(
     (set) => ({
       user: null,
+      authStatus: 'unknown',
       isLoading: true,
-      
-      // Mengatur data user ke dalam state memori
-      setUser: (user) => set({ user, isLoading: false }),
-
-      // Fungsi utama untuk sinkronisasi data dengan server (SWR Pattern)
+      setUser: (user) => set({ user }),
       fetchUser: async () => {
+        const request = ++generation;
+        const credential = getTokenFromCookie();
+        if (!credential) {
+          set({ user: null, authStatus: 'guest', isLoading: false });
+          return;
+        }
+        set({ authStatus: 'validating', isLoading: true });
+        const isCurrent = () => request === generation && credential === getTokenFromCookie();
         try {
-          const res = await apiGet<any>('/user');
-          const apiUser = res?.data || res?.user || res;
-          if (apiUser) {
-            set({ user: apiUser, isLoading: false });
-          }
-        } catch (error: any) {
-          if (error?.response?.status === 401) {
-            // Silently clear user state for unauthenticated users
-            set({ user: null, isLoading: false });
+          const user = await apiGet<User>('/user');
+          if (isCurrent()) set({ user, authStatus: 'authenticated', isLoading: false });
+        } catch (error: unknown) {
+          if (!isCurrent()) return;
+          if (error instanceof ApiError && error.status === 401) {
+            clearAuthCookie();
+            set({ user: null, authStatus: 'guest', isLoading: false });
           } else {
-             // Only log actual network or server errors, not the 401 unauth
-             console.error("Gagal sinkronisasi data user:", error);
-             set({ isLoading: false });
+            console.error('Gagal sinkronisasi data user:', error);
+            set({ authStatus: 'unknown', isLoading: false });
           }
         }
       },
-
-      // Membersihkan data saat logout
-      clearUser: () => set({ user: null, isLoading: false }),
+      clearUser: () => {
+        ++generation;
+        set({ user: null, authStatus: 'guest', isLoading: false });
+      },
     }),
     {
-      name: 'auth_user_storage', // Nama kunci di storage
-      storage: createJSONStorage(() => localStorage), // Tetap gunakan localStorage hanya untuk persistent cache (non-sensitive)
+      name: 'auth_user_storage',
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({ user: state.user }),
+      // Historical persisted flags (including old isLoading) are never trusted.
+      merge: (_persisted, current) => current,
     }
   )
 );

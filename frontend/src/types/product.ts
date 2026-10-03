@@ -1,6 +1,9 @@
 // ============================================================
 // Types: Product
-// sesuai dengan API response GET /api/products
+// Cerminan wire-format ProductResource (snake_case).
+//
+// ProductResource tidak mengemitted `updated_at`, sehingga field
+// tersebut sengaja tidak dideklarasikan di sini.
 // ============================================================
 
 export interface Product {
@@ -11,16 +14,11 @@ export interface Product {
   type: string;
   category: 'motor' | 'shockbreaker';
   description: string | null;
-  technicalSpecs: string | null;
+  technical_specs: string | null;
   price: number;
   stock: number;
-  masterVideoUrl: string | null;
-  thumbnailUrl: string | null;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ProductListResponse {
-  data: Product[];
+  thumbnail_url: string | null;
+  master_video_url: string | null;
+  is_active: boolean;
+  created_at: string | null;
 }

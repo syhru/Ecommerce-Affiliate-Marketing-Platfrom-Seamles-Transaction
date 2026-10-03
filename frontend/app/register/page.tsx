@@ -6,36 +6,24 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiPost } from '@/src/lib/api';
-import type { LoginResponse } from '@/src/types/user'; // Menggunakan Login Response karena kembaliannya mirip (user & token)
+import { hasAuthCredential, register as registerUser } from '@/src/lib/auth';
+import type { RegisterPayload } from '@/src/types/user';
 import { Settings } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
-// ── Cookie helper (client-side) ──────────────────────────────
-// Session cookie (tanpa Max-Age) → terhapus saat browser ditutup,
-// sehingga user tidak otomatis tetap login setelah browser dibuka kembali.
-function setAuthCookie(token: string): void {
-  document.cookie = `auth_token=${encodeURIComponent(token)}; Path=/; SameSite=Lax`;
-}
-
 import { useUserStore } from '@/src/stores/useUserStore';
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { fetchUser, user } = useUserStore();
+  const { fetchUser, authStatus } = useUserStore();
 
   useEffect(() => {
-    // Hindari redirect otomatis sesaat setelah logout
-    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('tdr_is_logging_out')) {
-      return;
-    }
-    
-    // Jika token sudah ada, cegah render registrasi dan arahkan kembali ke home/dashboard
-    if (typeof document !== 'undefined' && document.cookie.includes('auth_token=')) {
+    if (authStatus === 'authenticated' && hasAuthCredential()) {
       window.location.replace('/');
     }
-  }, [router]);
+  }, [authStatus]);
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -55,7 +43,7 @@ export default function RegisterPage() {
     setIsLoading(true);
 
     try {
-      const payload = {
+      const payload: RegisterPayload = {
         name,
         email,
         password,
@@ -63,10 +51,7 @@ export default function RegisterPage() {
         telegram_chat_id: telegramChatId || null,
       };
 
-      const response = await apiPost<LoginResponse>('/register', payload);
-
-      // Simpan token ke cookie
-      setAuthCookie(response.token);
+      const response = await registerUser(payload);
 
       // SWR: Tarik kembali data _user_ dengan profil data utuh dari server
       await fetchUser();

@@ -10,49 +10,33 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
-// ── Types ──
-interface Order {
-  id: number;
-  order_number: string;
-}
+// ── Types: pakai wire format dari src/types ──
+import type { Commission } from '@/src/types/affiliate';
+import type { Paginated } from '@/src/types/order';
 
-interface Commission {
-  id: number;
-  order_id: number;
-  amount: number;
-  status: string;
-  created_at: string;
-  order?: Order;
-}
+type PaginatedCommissions = Paginated<Commission>;
 
-interface PaginatedCommissions {
-  data: Commission[];
-  current_page: number;
-  last_page: number;
-  total: number;
-}
+import { formatDate, formatRupiah } from '@/src/lib/format';
+const formatRupiahFallback = formatRupiah;
 
-// ── Helpers ──
+// AffiliateCommission::STATUS_* = pending | earned | cancelled | withdrawn.
+import type { CommissionStatus } from '@/src/types/affiliate';
 import { useUserStore } from '@/src/stores/useUserStore';
-
-const formatRupiah = (amount: number) =>
-  new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
-
-const formatDate = (dateStr: string) => {
-  return new Date(dateStr).toLocaleDateString('id-ID', {
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  });
-};
-
-const getStatusBadge = (status: string) => {
+const getStatusBadge = (status: CommissionStatus | string) => {
   const map: Record<string, string> = {
     'pending': 'bg-amber-100 text-amber-700',
-    'approved': 'bg-emerald-100 text-emerald-700',
+    'earned': 'bg-emerald-100 text-emerald-700',
+    'cancelled': 'bg-slate-200 text-slate-600',
+    'withdrawn': 'bg-blue-100 text-blue-700',
     'rejected': 'bg-red-100 text-red-700',
   };
   const color = map[status] || 'bg-slate-100 text-slate-700';
-  const label = status === 'approved' ? 'Disetujui' : status === 'pending' ? 'Tertunda' : 'Ditolak';
+  const label =
+    status === 'earned' ? 'Diperoleh' :
+    status === 'pending' ? 'Tertunda' :
+    status === 'cancelled' ? 'Dibatalkan' :
+    status === 'withdrawn' ? 'Dicairkan' :
+    status === 'rejected' ? 'Ditolak' : status;
   return (
     <span className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md ${color}`}>
       {label}

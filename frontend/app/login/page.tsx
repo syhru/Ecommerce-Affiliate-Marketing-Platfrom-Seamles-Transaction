@@ -6,41 +6,30 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiPost } from '@/src/lib/api';
-import type { LoginCredentials, LoginResponse } from '@/src/types/user';
+import { login } from '@/src/lib/auth';
+import { hasAuthCredential } from '@/src/lib/auth';
+import type { LoginCredentials } from '@/src/types/user';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-
-// ── Cookie helper (client-side) ──────────────────────────────
-// Session cookie (tanpa Max-Age) → terhapus saat browser ditutup,
-// sehingga user tidak otomatis tetap login setelah browser dibuka kembali.
-function setAuthCookie(token: string): void {
-  document.cookie = `auth_token=${encodeURIComponent(token)}; Path=/; SameSite=Lax`;
-}
 
 import { useUserStore } from '@/src/stores/useUserStore';
 
-// ── Component ─────────────────────────────────────────────────
-export default function LoginPage() {
+// ── Inner (useSearchParams harus berada di dalam <Suspense>) ───
+function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { fetchUser, user } = useUserStore();
-
-  useEffect(() => {
-    // Hindari redirect otomatis sesaat setelah logout
-    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('tdr_is_logging_out')) {
-      return;
-    }
-    
-    // Jika token sudah ada, cegah render dan arahkan kembali ke home/dashboard
-    if (typeof document !== 'undefined' && document.cookie.includes('auth_token=')) {
-      window.location.replace('/');
-    }
-  }, [router]);
+  const { fetchUser, authStatus } = useUserStore();
 
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (authStatus === 'authenticated' && hasAuthCredential()) {
+      window.location.replace('/');
+    }
+  }, [authStatus]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -54,10 +43,7 @@ export default function LoginPage() {
 
     try {
       const credentials: LoginCredentials = { email, password };
-      const response = await apiPost<LoginResponse>('/login', credentials);
-
-      // Simpan token ke cookie
-      setAuthCookie(response.token);
+      const response = await login(credentials);
 
       // SWR: Tarik kembali data _user_ bulat-bulat dari endpoint /user 
       // yang memuat relasi lengkap (seperti affiliate_profile) ke dalam Zustand
@@ -233,5 +219,18 @@ export default function LoginPage() {
       
       <Footer />
     </main>
+  );
+}
+
+// ── Root Export (Suspense wrapper untuk useSearchParams) ─────
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-slate-500 font-medium animate-pulse">Memuat halaman login...</div>
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   );
 }

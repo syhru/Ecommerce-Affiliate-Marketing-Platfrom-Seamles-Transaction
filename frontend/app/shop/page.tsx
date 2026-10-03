@@ -5,25 +5,16 @@ import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { apiGet, apiPost } from '@/src/lib/api';
+import { apiGet } from '@/src/lib/api';
+import type { Paginated } from '@/src/types/order';
 import type { Product } from '@/src/types/product';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 // ─── Types ───────────────────────────────────────────────────
-interface PaginatedMeta {
-  current_page: number;
-  last_page: number;
-  per_page: number;
-  total: number;
-  from?: number;
-  to?: number;
-}
-interface PaginatedResponse<T> {
-  data: T[];
-  meta: PaginatedMeta;
-}
+// Paginator Laravel menaruh field paginasi di top-level (bukan `meta`).
+type ShopResponse = Paginated<Product>;
 
 type CategoryFilter = 'all' | 'motor' | 'shockbreaker';
 type SortOption    = 'created_at' | 'price' | 'name';
@@ -103,10 +94,10 @@ function ProductCard({ product, onAddToCart, onBuyNow }: { product: Product; onA
 
         {/* Thumbnail */}
         <div className="relative h-48 bg-slate-50 overflow-hidden shrink-0">
-        {product.thumbnailUrl ? (
+        {product.thumbnail_url ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
-            src={product.thumbnailUrl.startsWith('http') ? product.thumbnailUrl : `http://localhost:8000/storage/${product.thumbnailUrl}`}
+            src={product.thumbnail_url.startsWith('http') ? product.thumbnail_url : `http://localhost:8000/storage/${product.thumbnail_url}`}
             alt={product.name}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
           />
@@ -189,7 +180,7 @@ function ShopContent() {
   const [activePage,    setActivePage   ] = useState(1);
 
   const [products,  setProducts ] = useState<Product[]>([]);
-  const [meta,      setMeta     ] = useState<PaginatedMeta>({ current_page: 1, last_page: 1, per_page: 12, total: 0, from: 0, to: 0 });
+  const [meta,      setMeta     ] = useState<ShopResponse>({ data: [], current_page: 1, last_page: 1, per_page: 12, total: 0, from: 0, to: 0 });
   const [isLoading, setIsLoading] = useState(true);
 
   // ── Capture affiliate referral code from URL ──────────────
@@ -213,9 +204,9 @@ function ShopContent() {
       if (q)                   params.set('q', q);
       if (category !== 'all')  params.set('category', category);
 
-      const res = await apiGet<PaginatedResponse<Product>>(`/products?${params.toString()}`);
+      const res = await apiGet<ShopResponse>(`/products?${params.toString()}`);
       setProducts(res.data);
-      setMeta(res.meta);
+      setMeta(res);
     } catch {
       toast.error('Gagal memuat produk. Pastikan server Laravel berjalan.');
       setProducts([]);
@@ -271,7 +262,7 @@ function ShopContent() {
                 product_name: product.name,
                 product_price: product.price,
                 product_slug: product.slug,
-                thumbnail_url: product.thumbnailUrl,
+                thumbnail_url: product.thumbnail_url,
                 stock: product.stock,
                 quantity: 1,
                 affiliate_code: getAffiliateCode()
@@ -290,10 +281,7 @@ function ShopContent() {
         console.error("Local cart error", e);
     }
 
-    // API call to backend (Fire and Forget)
-    apiPost('/cart/add', { product_id: product.id, quantity: 1 }).catch(() => {
-       // Ignore failing API as we rely on LocalStorage locally
-    });
+    // Keranjang murni localStorage; tidak ada endpoint server-side cart.
   };
 
   const handleAddToCart = (product: Product) => {
@@ -312,7 +300,7 @@ function ShopContent() {
       product_name: product.name,
       product_price: product.price,
       product_slug: product.slug,
-      thumbnail_url: product.thumbnailUrl,
+      thumbnail_url: product.thumbnail_url,
       stock: product.stock,
       quantity: 1,
       affiliate_code: getAffiliateCode()
