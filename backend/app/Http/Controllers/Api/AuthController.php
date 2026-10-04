@@ -7,6 +7,7 @@ use App\Http\Requests\Api\LoginRequest;
 use App\Http\Requests\Api\RegisterRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Services\AdminUserService;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -87,10 +88,9 @@ class AuthController extends Controller
         $emailChanged = isset($data['email']) && $data['email'] !== $user->email;
         if ($emailChanged) {
             $request->validate(['current_password' => ['required', 'current_password:sanctum']]);
-            $user->email_verified_at = null;
         }
-        $user->fill($data)->save();
-        if ($emailChanged) {
+        $user = app(AdminUserService::class)->update($user, $data);
+        if ($user->wasChanged('email')) {
             $user->sendEmailVerificationNotification();
         }
 

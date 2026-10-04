@@ -7,10 +7,26 @@ use App\Models\AffiliateProfile;
 use App\Services\AffiliateService;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Arr;
 
 class EditAffiliate extends EditRecord
 {
     protected static string $resource = AffiliateResource::class;
+
+    protected function handleRecordUpdate(Model $record, array $data): Model
+    {
+        $data = Arr::only($data, [
+            'referral_code', 'commission_rate', 'bank_name',
+            'bank_account_number', 'bank_account_holder',
+        ]);
+
+        // The repository defines numeric rates but no canonical business range.
+        validator($data, ['commission_rate' => ['required', 'numeric']])->validate();
+        $record->update($data);
+
+        return $record;
+    }
 
     protected function getHeaderActions(): array
     {
@@ -32,7 +48,6 @@ class EditAffiliate extends EditRecord
                 ->label('Reactivate')->requiresConfirmation()
                 ->visible(fn () => $this->record->status === AffiliateProfile::STATUS_INACTIVE)
                 ->action(fn () => app(AffiliateService::class)->transition($this->record, AffiliateProfile::STATUS_ACTIVE)),
-            Actions\DeleteAction::make(),
         ];
     }
 

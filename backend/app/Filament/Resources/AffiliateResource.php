@@ -23,7 +23,7 @@ class AffiliateResource extends Resource
         return $form->schema([
             Forms\Components\Section::make('Affiliate Info')->columns(2)->schema([
                 Forms\Components\Select::make('user_id')->label('User')
-                    ->relationship('user', 'name')->searchable()->preload()->required(),
+                    ->relationship('user', 'name')->searchable()->preload()->disabled()->dehydrated(false),
                 Forms\Components\TextInput::make('referral_code')->required()->maxLength(50),
                 Forms\Components\TextInput::make('commission_rate')->label('Commission Rate (%)')->numeric()->required()->default(5),
                 Forms\Components\Select::make('status')->options([
@@ -32,8 +32,8 @@ class AffiliateResource extends Resource
                     'rejected' => 'Rejected',
                     'inactive' => 'Inactive',
                 ])->required()->native(false)->disabled(),
-                Forms\Components\TextInput::make('balance')->numeric()->prefix('Rp')->default(0),
-                Forms\Components\TextInput::make('total_earned')->numeric()->prefix('Rp')->default(0),
+                Forms\Components\TextInput::make('balance')->numeric()->prefix('Rp')->disabled()->dehydrated(false),
+                Forms\Components\TextInput::make('total_earned')->numeric()->prefix('Rp')->disabled()->dehydrated(false),
             ]),
             Forms\Components\Section::make('Bank Info')->columns(2)->schema([
                 Forms\Components\TextInput::make('bank_name')->nullable(),
@@ -70,8 +70,18 @@ class AffiliateResource extends Resource
                 ]),
             ])
             ->actions([Tables\Actions\ViewAction::make(), Tables\Actions\EditAction::make()])
-            ->bulkActions([Tables\Actions\BulkActionGroup::make([Tables\Actions\DeleteBulkAction::make()])])
+            ->bulkActions([])
             ->defaultSort('created_at', 'desc');
+    }
+
+    public static function canDelete(\Illuminate\Database\Eloquent\Model $record): bool
+    {
+        return false;
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return false;
     }
 
     public static function getPages(): array

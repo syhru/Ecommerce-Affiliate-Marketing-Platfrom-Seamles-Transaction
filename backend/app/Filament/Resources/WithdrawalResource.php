@@ -25,8 +25,8 @@ class WithdrawalResource extends Resource
         return $form->schema([
             Forms\Components\Section::make('Withdrawal Info')->columns(2)->schema([
                 Forms\Components\Select::make('affiliate_id')->label('Affiliate')
-                    ->relationship('affiliate', 'name')->searchable()->preload()->required(),
-                Forms\Components\TextInput::make('amount')->numeric()->prefix('Rp')->required(),
+                    ->relationship('affiliate', 'name')->searchable()->preload()->disabled()->dehydrated(false),
+                Forms\Components\TextInput::make('amount')->numeric()->prefix('Rp')->disabled()->dehydrated(false),
                 // The withdrawal lifecycle is owned by the decision operations
                 // below. A bare status edit here could double-refund or skip the
                 // refund entirely, so the field is read-only (WS-03 §5.5).
@@ -40,9 +40,9 @@ class WithdrawalResource extends Resource
                 Forms\Components\Textarea::make('notes')->rows(2)->nullable(),
             ]),
             Forms\Components\Section::make('Bank Info')->columns(2)->schema([
-                Forms\Components\TextInput::make('bank_name')->nullable(),
-                Forms\Components\TextInput::make('bank_account_number')->nullable(),
-                Forms\Components\TextInput::make('bank_account_holder')->nullable(),
+                Forms\Components\TextInput::make('bank_name')->nullable()->disabled()->dehydrated(false),
+                Forms\Components\TextInput::make('bank_account_number')->nullable()->disabled()->dehydrated(false),
+                Forms\Components\TextInput::make('bank_account_holder')->nullable()->disabled()->dehydrated(false),
             ]),
         ]);
     }
@@ -118,6 +118,16 @@ class WithdrawalResource extends Resource
                     ->visible(fn (AffiliateWithdrawal $record): bool => $record->status === AffiliateWithdrawal::STATUS_PENDING),
             ])
             ->defaultSort('created_at', 'desc');
+    }
+
+    public static function canDelete(\Illuminate\Database\Eloquent\Model $record): bool
+    {
+        return false;
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return false;
     }
 
     public static function getPages(): array
