@@ -210,6 +210,45 @@ class OrderService
         });
     }
 
+    public function advanceFulfilment(Order $order, string $event, ?string $trackingNumber = null): void
+    {
+        $edges = [
+            'order.processing' => [Order::STATUS_VERIFIED, Order::STATUS_PROCESSING, 'Pesanan Diproses'],
+            'order.shipped' => [Order::STATUS_PROCESSING, Order::STATUS_SHIPPED, 'Pesanan Dikirim'],
+        ];
+
+        if (! isset($edges[$event])) {
+            throw new \DomainException('Event pemenuhan pesanan tidak valid.');
+        }
+
+        [$from, $to, $title] = $edges[$event];
+
+        DB::transaction(function () use ($order, $from, $to, $title, $trackingNumber) {
+            $locked = Order::whereKey($order->id)->lockForUpdate()->first();
+
+            if (! $locked || $locked->status !== $from) {
+                throw new \DomainException('Status pesanan saat ini tidak mengizinkan perubahan ini.');
+            }
+
+            $updates = ['status' => $to];
+            $description = 'Status diperbarui oleh Admin.';
+
+            if ($to === Order::STATUS_SHIPPED) {
+                $updates['shipped_at'] = now();
+                if ($trackingNumber !== null && $trackingNumber !== '') {
+                    $updates['shipping_tracking_number'] = $trackingNumber;
+                    $description .= " Resi: {$trackingNumber}.";
+                }
+            }
+
+            $locked->update($updates);
+            $locked->trackingLogs()->create([
+                'status_title' => $title,
+                'description' => $description,
+            ]);
+        });
+    }
+
     public function checkAndVerifyPayment(Order $order): bool
     {
         if ($order->payment_verified_at) {
@@ -237,6 +276,23 @@ class OrderService
         return false;
     }
 
+
+    public function simulatePayment(Order $order): void
+    {
+        if (app()->environment('production')) {
+            throw new \DomainException('Simulasi pembayaran tidak tersedia di production.');
+        }
+
+        DB::transaction(function () use ($order) {
+            $locked = Order::whereKey($order->id)->lockForUpdate()->first();
+
+            if (! $locked || $locked->status !== Order::STATUS_PENDING || $locked->payment_verified_at) {
+                throw new \DomainException('Hanya pesanan pending yang dapat disimulasikan.');
+            }
+
+            $this->verifyPayment($locked, 'SIMULATED-' . now()->timestamp);
+        });
+    }
 
     public function verifyPayment(Order $order, string $transactionId): void
     {

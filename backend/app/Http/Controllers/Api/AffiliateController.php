@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\WithdrawalRequest;
+use App\Http\Resources\AffiliateCommissionResource;
 use App\Http\Resources\AffiliateProfileResource;
 use App\Models\AffiliateClick;
 use App\Models\AffiliateCommission;
@@ -131,9 +132,10 @@ class AffiliateController extends Controller
     public function commissions(Request $request): JsonResponse
     {
         $commissions = AffiliateCommission::where('affiliate_id', $request->user()->id)
-            ->with('order')
+            ->with('order:id,order_number')
             ->latest()
-            ->paginate($request->integer('per_page', 15));
+            ->paginate($request->integer('per_page', 15))
+            ->through(fn (AffiliateCommission $commission) => (new AffiliateCommissionResource($commission))->resolve($request));
 
         return response()->json($commissions);
     }

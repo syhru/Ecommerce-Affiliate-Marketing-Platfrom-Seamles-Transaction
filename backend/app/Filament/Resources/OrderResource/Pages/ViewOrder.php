@@ -30,15 +30,16 @@ class ViewOrder extends ViewRecord
                 ->modalHeading('Simulasi Pembayaran')
                 ->modalDescription('Apakah Anda yakin ingin menyimulasikan pembayaran yang berhasil untuk pesanan ini?')
                 ->action(function (Order $record) {
-                    // Run the exact same flow as a real Midtrans settlement webhook:
-                    // sets status => 'verified', payment_verified_at, midtrans_transaction_id,
-                    // creates a tracking log, records a pending affiliate commission, and fires
-                    // the Telegram notifications — keeping simulation and production in sync.
-                    app(OrderService::class)->verifyPayment($record, 'SIMULATED-' . now()->timestamp);
+                    try {
+                        app(OrderService::class)->simulatePayment($record);
+                    } catch (\DomainException $exception) {
+                        Notification::make()->title('Simulasi pembayaran tidak dapat diproses.')->danger()->send();
+                        return;
+                    }
 
                     Notification::make()->title('Simulasi pembayaran berhasil diproses.')->success()->send();
                 })
-                ->visible(fn (Order $record) => $record->status === Order::STATUS_PENDING),
+                ->visible(fn (Order $record) => ! app()->environment('production') && $record->status === Order::STATUS_PENDING),
 
             Actions\Action::make('update_status')
                 ->label('Update Status & Kirim Notifikasi')
@@ -53,7 +54,8 @@ class ViewOrder extends ViewRecord
                             'order.delivered'  => 'Pesanan Selesai',
                             'order.cancelled'  => 'Pesanan Dibatalkan',
                         ])
-                        ->required(),
+                        ->required()
+                        ->in(['order.processing', 'order.shipped', 'order.delivered', 'order.cancelled']),
                     \Filament\Forms\Components\TextInput::make('resi')
                         ->label('Nomor Resi')
                         ->visible(fn (\Filament\Forms\Get $get) => $get('event') === 'order.shipped'),
@@ -65,64 +67,36 @@ class ViewOrder extends ViewRecord
                 ->action(function (array $data, Order $record): void {
                     $orderService = app(OrderService::class);
 
-                    // Fulfilment transitions are a pure status change, but the
-                    // two financial transitions — completion and cancellation —
-                    // must run through the canonical OrderService operations so
-                    // commission earning, balance credit and stock restoration
-                    // can never be bypassed by a bare model update (WS-03 §5.2,
-                    // §5.3 / PA-F-08, PA-F-09).
-                    if ($data['event'] === 'order.delivered') {
-                        $orderService->markCompleted($record);
+                    try {
+                        if (! in_array($data['event'] ?? null, ['order.processing', 'order.shipped', 'order.delivered', 'order.cancelled'], true)) {
+                            throw new \DomainException('Event pesanan tidak valid.');
+                        }
 
-                        Notification::make()
-                            ->title('Pesanan diselesaikan. Komisi affiliate telah dikredit.')
-                            ->success()
-                            ->send();
+                        // Completion and cancellation retain their canonical financial operations.
+                        if ($data['event'] === 'order.delivered') {
+                            $orderService->markCompleted($record);
+                            Notification::make()
+                                ->title('Pesanan diselesaikan. Komisi affiliate telah dikredit.')
+                                ->success()->send();
+                            return;
+                        }
 
+                        if ($data['event'] === 'order.cancelled') {
+                            $orderService->cancelOrder($record, $data['cancellation_reason'] ?? null);
+                            Notification::make()
+                                ->title('Pesanan dibatalkan. Stok telah dikembalikan.')
+                                ->success()->send();
+                            return;
+                        }
+
+                        $orderService->advanceFulfilment($record, $data['event'], $data['resi'] ?? null);
+                    } catch (\DomainException $exception) {
+                        Notification::make()->title('Status pesanan tidak dapat diperbarui.')->danger()->send();
                         return;
                     }
-
-                    if ($data['event'] === 'order.cancelled') {
-                        $orderService->cancelOrder($record, $data['cancellation_reason'] ?? null);
-
-                        Notification::make()
-                            ->title('Pesanan dibatalkan. Stok telah dikembalikan.')
-                            ->success()
-                            ->send();
-
-                        return;
-                    }
-
-                    $statusMap = [
-                        'order.processing' => ['code' => Order::STATUS_PROCESSING, 'title' => 'Pesanan Diproses'],
-                        'order.shipped'    => ['code' => Order::STATUS_SHIPPED,    'title' => 'Pesanan Dikirim'],
-                    ];
-
-                    $actionData = $statusMap[$data['event']];
-                    $updates    = ['status' => $actionData['code']];
-                    $descAddon  = '';
-
-                    // Always pull the resi to the updates if provided
-                    if (!empty($data['resi'])) {
-                        $updates['shipping_tracking_number'] = $data['resi'];
-                        $descAddon .= " Resi: {$data['resi']}.";
-                    }
-
-                    if ($data['event'] === 'order.shipped') {
-                        $updates['shipped_at'] = now();
-                    }
-
-                    $record->update($updates);
-
-                    $record->trackingLogs()->create([
-                        'status_title' => $actionData['title'],
-                        'description'  => "Status diperbarui oleh Admin." . $descAddon,
-                    ]);
 
                     Notification::make()->title('Status pesanan diperbarui dan notifikasi terkirim.')->success()->send();
                 })
-                // No completed order can be touched here: completion and
-                // cancellation are both terminal for this action.
                 ->visible(fn (Order $record) => in_array($record->status, [
                     Order::STATUS_VERIFIED,
                     Order::STATUS_PROCESSING,

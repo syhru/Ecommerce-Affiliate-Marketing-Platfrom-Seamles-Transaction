@@ -33,10 +33,10 @@ class UserResource extends Resource
                 Forms\Components\TextInput::make('email')->email()->required()->unique(User::class, 'email', ignoreRecord: true),
                 Forms\Components\Select::make('role')
                     ->label('Role')
-                    ->options([
-                        'customer'  => 'Customer',
+                    ->options(fn (?User $record): array => [
+                        'customer' => 'Customer',
                         'affiliate' => 'Affiliate',
-                    ])
+                    ] + ($record?->isSuperadmin() ? ['superadmin' => 'Superadmin'] : []))
                     ->required()
                     ->native(false),
                 Forms\Components\TextInput::make('telegram_chat_id')->label('Telegram Chat ID')->nullable(),
@@ -95,9 +95,19 @@ class UserResource extends Resource
                 ]),
                 Tables\Filters\TernaryFilter::make('is_active')->label('Active Status'),
             ])
-            ->actions([Tables\Actions\ViewAction::make(), Tables\Actions\DeleteAction::make()])
-            ->bulkActions([Tables\Actions\BulkActionGroup::make([Tables\Actions\DeleteBulkAction::make()])])
+            ->actions([Tables\Actions\ViewAction::make()])
+            ->bulkActions([])
             ->defaultSort('created_at', 'desc');
+    }
+
+    public static function canDelete(\Illuminate\Database\Eloquent\Model $record): bool
+    {
+        return false;
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return false;
     }
 
     public static function getPages(): array

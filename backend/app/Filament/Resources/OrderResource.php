@@ -176,8 +176,18 @@ class OrderResource extends Resource
                 ]),
             ])
             ->actions([Tables\Actions\ViewAction::make()])
-            ->bulkActions([Tables\Actions\BulkActionGroup::make([Tables\Actions\DeleteBulkAction::make()])])
+            ->bulkActions([])
             ->defaultSort('created_at', 'desc');
+    }
+
+    public static function canDelete(\Illuminate\Database\Eloquent\Model $record): bool
+    {
+        return false;
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return false;
     }
 
     public static function getPages(): array
