@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/identity-security.test.cjs tests/ws05-remediation.test.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

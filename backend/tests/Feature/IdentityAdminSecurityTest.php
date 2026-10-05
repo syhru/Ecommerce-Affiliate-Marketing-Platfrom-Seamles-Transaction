@@ -7,6 +7,7 @@ use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Notification;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class IdentityAdminSecurityTest extends TestCase
@@ -159,9 +160,7 @@ class IdentityAdminSecurityTest extends TestCase
         ];
     }
 
-    /**
-     * @dataProvider ssoRechecksProvider
-     */
+    #[DataProvider('ssoRechecksProvider')]
     public function test_sso_rechecks_role_verification_status_and_revocation(string $change): void
     {
         $user = User::factory()->create(['role' => 'superadmin', 'email_verified_at' => now()]);

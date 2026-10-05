@@ -1,0 +1,91 @@
+name: Portable verification
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      APP_ENV: testing
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_CONFIG_CACHE: /tmp/tdr-verification-config.php
+      FRONTEND_URL: http://localhost:3000
+      DB_CONNECTION: sqlite
+      DB_DATABASE: ':memory:'
+      DB_URL: ''
+      DATABASE_URL: ''
+      CACHE_STORE: array
+      MAIL_MAILER: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      BROADCAST_CONNECTION: 'null'
+      MIDTRANS_MERCHANT_ID: ''
+      MIDTRANS_SERVER_KEY: ''
+      MIDTRANS_CLIENT_KEY: ''
+      MIDTRANS_IS_PRODUCTION: 'false'
+      TELEGRAM_BOT_TOKEN: ''
+      TELEGRAM_BOT_USERNAME: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: bcmath, ctype, curl, dom, fileinfo, filter, intl, mbstring, openssl, pdo, pdo_sqlite, sqlite3, session, tokenizer, xml, xmlreader, xmlwriter, zip
+          tools: composer:v2
+          coverage: none
+      - name: Validate Composer metadata
+        run: composer validate --no-check-publish
+      - name: Install locked dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Check runtime requirements
+        run: |
+          composer check-platform-reqs
+          php -r 'foreach (["PDO", "pdo_sqlite", "sqlite3"] as $extension) { if (!extension_loaded($extension)) { fwrite(STDERR, "Missing extension: $extension\n"); exit(1); } }'
+      - name: Full backend suite
+        run: php vendor/bin/phpunit --colors=never --display-phpunit-deprecations --fail-on-phpunit-deprecation
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Node tests
+        run: npm test
+      - name: Production build
+        run: npm run build
+      - name: Lint (advisory)
+        id: lint
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: npm run lint
+      - name: Report lint outcome
+        if: ${{ !cancelled() }}
+        env:
+          LINT_OUTCOME: ${{ steps.lint.outcome }}
+        run: |
+          printf 'Lint outcome: %s (advisory; existing lint debt is nonblocking)\n' "$LINT_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$LINT_OUTCOME" = failure ]; then
+            printf '::warning::Lint failed. Diagnostics are visible above; lint remains advisory until existing debt is resolved.\n'
+          fi
