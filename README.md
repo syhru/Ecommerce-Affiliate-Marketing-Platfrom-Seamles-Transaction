@@ -95,6 +95,25 @@ npm run lint
 
 CI has no deployment, provider sandbox, browser farm, secret requirement or PostgreSQL service step. PostgreSQL concurrency, browser E2E, real provider delivery and the Next middleware-to-proxy warning are separate follow-ups.
 
+## Opt-in disposable PostgreSQL invariant verification
+
+WS-07B adds a separate mandatory `postgresql-invariants` CI job to the portable baseline above. It uses PostgreSQL 18, PHP 8.3 with `pdo_pgsql`, a fresh GitHub-managed service and public throwaway credentials, not project secrets. The earlier no-PostgreSQL CI description applies to the WS-07A baseline only.
+
+For local execution, use Docker and a compatible PHP >=8.3 CLI with `pdo_pgsql`, `proc_open` and the locked backend dependencies installed. From a fresh shell without inherited database URLs or cached configuration:
+
+```bash
+cd backend # from repository root
+composer install --no-interaction --prefer-dist --no-progress --no-scripts
+docker pull postgres:18
+php tests/PostgreSQL/run.php
+```
+
+The launcher creates a new loopback-only container on a dynamically selected port, unique database/user/password and ownership sentinel. Coordinator and independent workers verify the exact container and sentinel before application boot. It never reads a developer `.env`, accepts an existing database/DSN, connects to localhost:5432, or uses a project volume. Do not supply database settings; unsupported launcher options fail closed. `--filter S3` can select the withdrawal-reservation proof; safety negatives still run first. `--ci-owned-service` is reserved for the exact GitHub-hosted job service, not a local database adapter.
+
+The separate suite runs fresh repository migrations and nine deterministic lock/blocker scenarios covering I1 last-stock order creation, I2 order lifecycle serialization, I3 withdrawal reservation, I4 withdrawal terminal decisions and I5 last eligible superadmin. Providers/notifications are faked. It does not certify production behavior, I6/I7 replay, migration-history upgrades/rollback, provider delivery, or a stress/permutation matrix. The default SQLite suite remains unchanged.
+
+Cleanup re-verifies ownership and removes only the exact local container plus this run's scratch files. In CI, GitHub owns service removal; the launcher removes only its scratch files. Cleanup failure is a failing result and reports the **exact container ID** requiring ownership-verified recovery. Never use wildcard cleanup or remove a container based only on a name/port.
+
 ## Issues and license
 
 Report issues through the repository's GitHub Issues page. This project is licensed under the [MIT License](LICENSE).

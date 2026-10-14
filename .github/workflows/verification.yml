@@ -89,3 +89,44 @@ jobs:
           if [ "$LINT_OUTCOME" = failure ]; then
             printf '::warning::Lint failed. Diagnostics are visible above; lint remains advisory until existing debt is resolved.\n'
           fi
+
+  postgresql-invariants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: tdr_ws07b
+          POSTGRES_USER: tdr_ws07b
+          POSTGRES_PASSWORD: tdr_ws07b
+        ports:
+          - 5432/tcp
+        options: >-
+          --label tdr.ws07b.ci=github-job-v1
+          --health-cmd "pg_isready -U tdr_ws07b -d tdr_ws07b"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: bcmath, ctype, curl, dom, fileinfo, filter, intl, mbstring, openssl, pdo, pdo_pgsql, pdo_sqlite, sqlite3, session, tokenizer, xml, xmlreader, xmlwriter, zip
+          tools: composer:v2
+          coverage: none
+      - name: Validate Composer metadata
+        run: composer validate --no-check-publish
+      - name: Install locked dependencies without application scripts
+        run: composer install --no-interaction --prefer-dist --no-progress --no-scripts
+      - name: Check runtime requirements
+        run: composer check-platform-reqs
+      - name: Disposable PostgreSQL invariant suite
+        env:
+          TDR_PG_CI_SERVICE_ID: ${{ job.services.postgres.id }}
+          TDR_PG_CI_SERVICE_PORT: ${{ job.services.postgres.ports[5432] }}
+        run: php tests/PostgreSQL/run.php --ci-owned-service
