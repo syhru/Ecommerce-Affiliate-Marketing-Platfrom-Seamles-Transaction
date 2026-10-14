@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/PostgreSQL/Support/Ownership.php"
+         colors="false" cacheResult="false" failOnEmptyTestSuite="true">
+    <testsuites>
+        <testsuite name="PostgreSQL Safety"><file>tests/PostgreSQL/SafetyTest.php</file><file>tests/PostgreSQL/HarnessSafetyTest.php</file><file>tests/PostgreSQL/CleanupFailureVisibilityTest.php</file></testsuite>
+        <testsuite name="PostgreSQL Invariants"><file>tests/PostgreSQL/InvariantConcurrencyTest.php</file></testsuite>
+    </testsuites>
+</phpunit>
