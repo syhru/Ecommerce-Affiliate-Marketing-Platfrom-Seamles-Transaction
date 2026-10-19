@@ -1,0 +1,4 @@
+# Preserve exact byte-identical inputs without CRLF/LF line-ending normalization
+once-ui-patch.cjs -text
+@once-ui-system+core+2.0.0.patch -text
+once-ui-source-identity.json -text
