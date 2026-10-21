@@ -29,11 +29,11 @@ Runner script dirancang tanpa dependensi eksternal tambahan (hanya modul standar
 1. **Inisialisasi Provenance & Snapshot Raw Awal**:
    - Direktori `evidence/` dibuat di awal eksekusi.
    - `TASK_OWNERSHIP.json` dan `ci-summary.json` (status awal `RUNNING`) ditulis sedini mungkin dengan mencatat metadata aman: timestamp, OS, release, arch, Node version, runner script SHA256, dan allowlisted GitHub context (`GITHUB_SHA`, `GITHUB_REF`, `GITHUB_EVENT_NAME`, `GITHUB_WORKFLOW`, `GITHUB_RUN_ID`, `ImageOS`).
-   - `checkout-initial-snapshot.json` ditulis langsung ke disk sebelum pemeriksaan lanjutan, mencatat path, required flag, presence status, dan raw SHA-256 untuk ketujuh berkas yang dilindungi serta status ketiadaan direktori terlarang (`frontend/scripts`, `frontend/patches`).
-   - Berkas wajib yang hilang (`next.config.ts`, `tsconfig.json`, manifest, lockfile, 3 accepted inputs) ditolak secara tegas (*fail-closed*) saat intake.
+   - `checkout-initial-snapshot.json` ditulis langsung ke disk sebelum pemeriksaan lanjutan, mencatat path, required flag, presence status, dan raw SHA-256 untuk sepuluh berkas yang dilindungi: manifest, lockfile, next.config.ts, tsconfig.json, tiga accepted inputs CI dan tiga canonical frontend inputs. Presence canonical node_modules dicatat terpisah; fresh CI checkout wajib absent.
+   - Berkas wajib yang hilang (`next.config.ts`, `tsconfig.json`, manifest, lockfile, 3 accepted inputs CI, 3 canonical inputs) ditolak secara tegas (*fail-closed*) saat intake.
 
 2. **Pengukuran Masukan Inti & Validasi Checksum**:
-   - Seluruh 5 input inti (`once-ui-patch.cjs`, patch, identity, `package.json`, `package-lock.json`) diukur secara fisik dan hasilnya langsung ditulis ke `intake-input-hashes.json` dan `TASK_OWNERSHIP.json` **sebelum** assertion dijalankan.
+   - Seluruh 8 input inti (`once-ui-patch.cjs`, patch, identity, `package.json`, `package-lock.json`, tiga canonical frontend inputs) diukur secara fisik dan hasilnya langsung ditulis ke `intake-input-hashes.json` dan `TASK_OWNERSHIP.json` **sebelum** assertion dijalankan.
    - Jika terdapat ketidakcocokan hash masukan atau berkas hilang, proses langsung dihentikan (*fail-closed*) dengan exit code 1; seluruh bukti provenance dan actual wrong hashes tersimpan tanpa menjalankan satu pun subprocess.
 
 3. **Isolasi Fisik di `RUNNER_TEMP` & Deteksi Konflik Skrip Manifest Scratch**:
@@ -41,8 +41,8 @@ Runner script dirancang tanpa dependensi eksternal tambahan (hanya modul standar
    - Direktori scratch dicatat ke `TASK_OWNERSHIP.json` setelah dibuat. Versi `npm` diukur dan ditambahkan ke ownership.
    - Menginisialisasi dua salinan bersih: `normal` dan `ignored-scripts`.
    - Menyalin source aplikasi frontend dari checkout dengan pengecualian ketat (`node_modules`, `.next`, `.git`, `tsconfig.tsbuildinfo`, `.env*` tidak disalin).
-   - Menempatkan helper pada `scripts/once-ui-patch.cjs` dan patch pada `patches/once-ui/`.
-   - Menambahkan 3 lifecycle scripts pada `package.json` salinan scratch dengan **pemeriksaan konflik terarah**:
+   - Checkout activated sudah membawa helper/patch/identity. Copier mempertahankan bytes tersebut lalu memvalidasi exact identities sebelum penggunaan, tanpa overwrite dari inputs CI. Snapshot memeriksa physical components, regular single-link files, dan menolak symlink/junction/alias pada protected inputs.
+   - Memvalidasi 3 lifecycle scripts activated pada `package.json` salinan scratch dengan **pemeriksaan konflik terarah**:
      * `postinstall`: `"node scripts/once-ui-patch.cjs apply"`
      * `verify:once-ui`: `"node scripts/once-ui-patch.cjs verify"`
      * `prebuild`: `"npm run verify:once-ui"`
@@ -85,10 +85,10 @@ Runner script dirancang tanpa dependensi eksternal tambahan (hanya modul standar
 7. **Snapshot Raw Akhir & Verifikasi Integritas Scoped Checkout**:
    - `checkout-final-snapshot.json` ditulis langsung ke disk **sebelum** assertion comparison dijalankan.
    - Menjalankan evaluasi integritas checkout dinamis:
-     * Berkas wajib (`next.config.ts`, `tsconfig.json`, manifest, lockfile, 3 accepted inputs) wajib ada di initial dan final; missing files (`null === null`) ditolak keras.
+     * Berkas wajib (`next.config.ts`, `tsconfig.json`, manifest, lockfile, 3 accepted inputs CI, 3 canonical inputs) wajib ada di initial dan final; missing files (`null === null`) ditolak keras.
      * Berkas canonical tidak termutasi selama run.
      * Manifest dan lockfile canonical cocok dengan baseline expected.
-     * `frontend/scripts` dan `frontend/patches` tetap tidak ada (tidak ada kebocoran file runner).
+     * Tiga canonical frontend inputs wajib ada, exact accepted bytes pada initial/final, dan tidak berubah selama run. Direktori scripts/patches tidak lagi dilarang secara total.
      * `node_modules` canonical tidak dibuat saat execution.
    - Hasil evaluasi dicatat ke `checkout-integrity.json`. Jika ada kegagalan, melempar error dengan referensi snapshot raw.
 
@@ -113,13 +113,13 @@ Berkas-berkas ini merupakan infrastruktur CI baru yang harus tersedia pada check
 6. `.github/ws08-once-ui-install/inputs/@once-ui-system+core+2.0.0.patch`
 7. `.github/ws08-once-ui-install/inputs/once-ui-source-identity.json`
 
-### Kategori 2: Manifest & Lockfile Frontend Baseline Pengguna (Wajib dalam Commit Run)
+### Kategori 2: Manifest Activated, Lockfile dan Canonical Inputs (Wajib dalam Checkout Run)
 Runner script memverifikasi hash exact canonical `frontend/package.json` dan `frontend/package-lock.json`.
-Saat ini, kedua berkas tersebut merupakan modifikasi manual pengguna di *working tree* yang **belum dicommit ke HEAD**:
-- `frontend/package.json` (Expected SHA256: `cf91dbde1ac36c4cdf6f4d0aebf0124a560d459f74dd52d581661bfcfe9e5bff`)
+Baseline aktivasi sekarang (bukan baseline historis runner sebelum aktivasi):
+- `frontend/package.json` (Expected SHA256: `61de8012c454de332b54f6e393b2972ff3f323e9067bfce612115f0922c0ac3c`)
 - `frontend/package-lock.json` (Expected SHA256: `4bd4f21c8ab404c4557664bb28b144371c71c14759a9cde627f1dbd25cb11894`)
 
-*Catatan penting*: Di Git HEAD saat ini, hash `frontend/package.json` adalah `62003e8e...` dan `frontend/package-lock.json` adalah `d030c0d2...`. Jika hanya 7 berkas baru pada Kategori 1 yang dicommit dan dipush tanpa menyertakan modifikasi baseline pengguna pada Kategori 2, runner di GitHub Actions akan mengalami *fail-closed* pada langkah validasi checksum masukan.
+Input minimum publikasi aktivasi juga mencakup `frontend/scripts/once-ui-patch.cjs`, kedua files pada `frontend/patches/once-ui/`, `frontend/patches/once-ui/.gitattributes`, `frontend/.gitattributes` (dua manifest rules dipertahankan, helper -text ditambahkan), serta explicit gate di `.github/workflows/verification.yml`. Tiga canonical inputs harus byte-identical dengan inputs CI; jangan mengubah expected source hashes. Lockfile tetap exact, tanpa dependency change. Files CI/inputs lama tetap dibutuhkan; bukti artifacts lokal bukan runtime input.
 
 ### Kategori 3: Source dan Konfigurasi Frontend (Tersedia dari Checkout Commit)
 Copier runner script (`copyFrontend`) menyalin seluruh pohon direktori frontend dari checkout commit ke direktori scratch terisolasi di `RUNNER_TEMP` sesuai aturan pengecualian (*exclusions*). Pemisahan fungsional berkas yang disalin:
@@ -166,5 +166,5 @@ Berkas berikut merupakan artefak audit lokal dalam repository dan **tidak diguna
 
 - **Verifikasi Sintetis Lokal**: Seluruh gerbang kontrol alur, penegakan prebuild ordering, penolakan negatif unpatched copy, immutabilitas target, persistensi snapshot raw, penolakan masukan salah, dan inkremental lockfile telah dibuktikan secara lokal melalui rangkaian pengujian sintetis terarah dan fixture independen Reviewer.
 - **Pembuktian Serializer Runtime vs Helper Unit**: Penulisan raw initial dan final snapshots dibuktikan pada call sites fungsi `main()` melalui mocking interception dan eksekusi blok final berurutan, bukan sekadar nilai kembalian helper perbandingan.
-- **Status Ubuntu CI Aktual**: Lingkungan GitHub Actions runner `ubuntu-latest` aktual saat ini **BELUM DIJALANKAN (NOT RUN)**. Pembuktian lokal tidak merepresentasikan eksekusi siklus hidup instalasi penuh pada infrastruktur remote GitHub Actions.
-- **Aktivasi Patch & Deployment**: Patch Once UI belum diaktifkan secara canonical pada aplikasi utama, dan deployment ditunda sesuai arahan arsitektur proyek.
+- **Ubuntu historis**: Bundle run `39317803712`, commit `9ed4dceded97db9cdbd80734805886c3f8a9a73f`, ubuntu24/Node24.18.0/npm11.16.0 berstatus PASS pada salinan runner baseline lama. Itu bukan fresh activated-run proof. Updated remote CI setelah aktivasi **BELUM DIJALANKAN / NOT VERIFIED**.
+- **Aktivasi & batas proof**: Canonical helper/patch/identity dan tiga hooks diaktifkan oleh task aktivasi; explicit verify di workflow utama berada sesudah npm ci sebelum checks. Local activation actual dan fixture delta checks dilaporkan dalam `result_WS-08_Hermes_Builder_Once_UI_Patch_Activation_CI_Integration.md`. Fixture/mock bukan instalasi nyata. Deployment ditunda, Header4/UI belum diintegrasikan, W8CF-R-F-01 tetap inherited/open. Independent review serta Git publication dilakukan terpisah.

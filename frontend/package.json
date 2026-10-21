@@ -8,7 +8,10 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/identity-security.test.cjs tests/ws05-remediation.test.cjs"
+    "test": "node --test tests/identity-security.test.cjs tests/ws05-remediation.test.cjs",
+    "postinstall": "node scripts/once-ui-patch.cjs apply",
+    "verify:once-ui": "node scripts/once-ui-patch.cjs verify",
+    "prebuild": "npm run verify:once-ui"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

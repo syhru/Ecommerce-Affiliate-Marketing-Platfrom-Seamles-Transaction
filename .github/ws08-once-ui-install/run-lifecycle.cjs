@@ -28,7 +28,7 @@ const EXPECTED = {
   helper_sha256: 'ed9c8a1202a9f3c8892d2f50b88d157b9defb4d37021dbf36e7f14efe7a88e73',
   approved_patch_sha256: '8738f5c16076bfce1a4c72c7206c2eca04e429796a16f5423424afd45be97891',
   identity_sha256: '744a34fbc07b101030846974602f5855a5dead7f628233fb739dd8211de8470b',
-  frontend_package_json_sha256: 'cf91dbde1ac36c4cdf6f4d0aebf0124a560d459f74dd52d581661bfcfe9e5bff',
+  frontend_package_json_sha256: '61de8012c454de332b54f6e393b2972ff3f323e9067bfce612115f0922c0ac3c',
   frontend_package_lock_sha256: '4bd4f21c8ab404c4557664bb28b144371c71c14759a9cde627f1dbd25cb11894'
 };
 
@@ -38,6 +38,12 @@ const SCRIPTS_TO_ADD = {
   prebuild: 'npm run verify:once-ui'
 };
 
+const CANONICAL_INPUTS = {
+  canonical_helper: { relativePath: 'scripts/once-ui-patch.cjs', expectedKey: 'helper_sha256' },
+  canonical_patch: { relativePath: 'patches/once-ui/@once-ui-system+core+2.0.0.patch', expectedKey: 'approved_patch_sha256' },
+  canonical_identity: { relativePath: 'patches/once-ui/once-ui-source-identity.json', expectedKey: 'identity_sha256' }
+};
+
 const REQUIRED_CHECKOUT_FILES = [
   'canonical_package_json',
   'canonical_package_lock',
@@ -45,12 +51,38 @@ const REQUIRED_CHECKOUT_FILES = [
   'tsconfig',
   'input_helper',
   'input_patch',
-  'input_identity'
+  'input_identity',
+  ...Object.keys(CANONICAL_INPUTS)
 ];
 
 const sha256 = filePath => {
   const data = fs.readFileSync(filePath);
   return crypto.createHash('sha256').update(data).digest('hex');
+};
+
+const assertPhysicalFile = (root, relativePath) => {
+  let current = root;
+  const parts = relativePath.split('/');
+  for (const [index, part] of parts.entries()) {
+    current = path.join(current, part);
+    const stat = fs.lstatSync(current);
+    const leaf = index === parts.length - 1;
+    if (stat.isSymbolicLink() || (leaf ? !stat.isFile() || stat.nlink !== 1 : !stat.isDirectory())) {
+      throw new Error(`Unsupported physical input path: ${current}`);
+    }
+    if (fs.realpathSync(current) !== path.resolve(current)) {
+      throw new Error(`Unsupported path spelling or aliased input: ${current}`);
+    }
+  }
+};
+
+const verifyCanonicalInputs = (frontendDir, expectedHashes) => {
+  for (const { relativePath, expectedKey } of Object.values(CANONICAL_INPUTS)) {
+    assertPhysicalFile(frontendDir, relativePath);
+    if (sha256(path.join(frontendDir, relativePath)) !== expectedHashes[expectedKey]) {
+      throw new Error(`Canonical input checksum mismatch: ${relativePath}`);
+    }
+  }
 };
 
 const sanitize = text => {
@@ -274,7 +306,9 @@ const applyScratchScripts = (pkgJsonPath, scriptsToAdd) => {
     throw new Error(`Conflict detected in package.json scripts at ${pkgJsonPath}:\n${detail}\nRefusing to overwrite silently.`);
   }
 
-  fs.writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2) + '\n');
+  if (Object.keys(auditLog.added).length > 0) {
+    fs.writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2) + '\n');
+  }
   return auditLog;
 };
 
@@ -291,6 +325,7 @@ const takeScopedCheckoutSnapshot = (repoRoot, expectedHashes) => {
     let readError = null;
     if (exists) {
       try {
+        assertPhysicalFile(repoRoot, path.relative(repoRoot, filePath).split(path.sep).join('/'));
         hash = sha256(filePath);
       } catch (err) {
         readError = err.message;
@@ -314,11 +349,11 @@ const takeScopedCheckoutSnapshot = (repoRoot, expectedHashes) => {
       tsconfig: getFileInfo(tsconfigPath, true),
       input_helper: getFileInfo(path.join(inputsDir, 'once-ui-patch.cjs'), true),
       input_patch: getFileInfo(path.join(inputsDir, '@once-ui-system+core+2.0.0.patch'), true),
-      input_identity: getFileInfo(path.join(inputsDir, 'once-ui-source-identity.json'), true)
+      input_identity: getFileInfo(path.join(inputsDir, 'once-ui-source-identity.json'), true),
+      ...Object.fromEntries(Object.entries(CANONICAL_INPUTS).map(([key, { relativePath }]) =>
+        [key, getFileInfo(path.join(repoRoot, 'frontend', relativePath), true)]))
     },
     prohibited_paths_presence: {
-      canonical_scripts_dir_exists: fs.existsSync(path.join(repoRoot, 'frontend/scripts')),
-      canonical_patches_dir_exists: fs.existsSync(path.join(repoRoot, 'frontend/patches')),
       canonical_node_modules_exists: fs.existsSync(path.join(repoRoot, 'frontend/node_modules'))
     }
   };
@@ -403,17 +438,19 @@ const verifyScopedCheckoutIntegrity = (initialSnapshot, finalSnapshot, expectedH
     failures.push(`input_identity mismatch: actual ${finalSnapshot.protected_files.input_identity ? finalSnapshot.protected_files.input_identity.sha256 : null} != expected ${expectedHashes.identity_sha256}`);
   }
 
-  // 3. Prohibited paths checks
-  const scriptsAbsent = !finalSnapshot.prohibited_paths_presence.canonical_scripts_dir_exists;
-  integrityReport.canonical_scripts_dir_absent = scriptsAbsent;
-  if (!scriptsAbsent) {
-    failures.push('Prohibited directory frontend/scripts exists in canonical checkout!');
+  for (const [key, { expectedKey }] of Object.entries(CANONICAL_INPUTS)) {
+    for (const [stage, snapshot] of [['initial', initialSnapshot], ['final', finalSnapshot]]) {
+      const matches = snapshot.protected_files[key]?.sha256 === expectedHashes[expectedKey];
+      integrityReport[`${key}_${stage}_matches_baseline`] = matches;
+      if (!matches) failures.push(`${key} ${stage} checksum mismatch`);
+    }
   }
 
-  const patchesAbsent = !finalSnapshot.prohibited_paths_presence.canonical_patches_dir_exists;
-  integrityReport.canonical_patches_dir_absent = patchesAbsent;
-  if (!patchesAbsent) {
-    failures.push('Prohibited directory frontend/patches exists in canonical checkout!');
+  // Physical input validation is recorded by each raw snapshot before comparison.
+  for (const snapshot of [initialSnapshot, finalSnapshot]) {
+    for (const [key, entry] of Object.entries(snapshot.protected_files)) {
+      if (entry.status !== 'PRESENT') failures.push(`Invalid protected input [${key}]: ${entry.status}`);
+    }
   }
 
   const nodeModulesNotCreated = !finalSnapshot.prohibited_paths_presence.canonical_node_modules_exists ||
@@ -571,12 +608,6 @@ const main = (options = {}) => {
     fs.writeFileSync(path.join(evidenceDir, 'checkout-initial-snapshot.json'), JSON.stringify(initialCheckoutSnapshot, null, 2));
 
     // Prohibited paths check at intake
-    if (initialCheckoutSnapshot.prohibited_paths_presence.canonical_scripts_dir_exists) {
-      throw new Error('Intake integrity failure: canonical frontend/scripts directory already exists in repository checkout! Prohibited.');
-    }
-    if (initialCheckoutSnapshot.prohibited_paths_presence.canonical_patches_dir_exists) {
-      throw new Error('Intake integrity failure: canonical frontend/patches directory already exists in repository checkout! Prohibited.');
-    }
     if (process.env.CI && initialCheckoutSnapshot.prohibited_paths_presence.canonical_node_modules_exists) {
       throw new Error('Intake integrity failure: frontend/node_modules exists on fresh CI checkout! Fresh checkout must not have node_modules.');
     }
@@ -623,7 +654,9 @@ const main = (options = {}) => {
         patch: measureInput(inputPatch, EXPECTED.approved_patch_sha256),
         identity: measureInput(inputIdentity, EXPECTED.identity_sha256),
         canonicalPkgJson: measureInput(canonicalPkgJson, EXPECTED.frontend_package_json_sha256),
-        canonicalPkgLock: measureInput(canonicalPkgLock, EXPECTED.frontend_package_lock_sha256)
+        canonicalPkgLock: measureInput(canonicalPkgLock, EXPECTED.frontend_package_lock_sha256),
+        ...Object.fromEntries(Object.entries(CANONICAL_INPUTS).map(([key, { relativePath, expectedKey }]) =>
+          [key, measureInput(path.join(repoRoot, 'frontend', relativePath), EXPECTED[expectedKey])]))
       }
     };
     fs.writeFileSync(path.join(evidenceDir, 'intake-input-hashes.json'), JSON.stringify(inputMeasurements, null, 2));
@@ -633,7 +666,8 @@ const main = (options = {}) => {
       patch: inputMeasurements.inputs.patch.actual_sha256,
       identity: inputMeasurements.inputs.identity.actual_sha256,
       canonicalPkgJson: inputMeasurements.inputs.canonicalPkgJson.actual_sha256,
-      canonicalPkgLock: inputMeasurements.inputs.canonicalPkgLock.actual_sha256
+      canonicalPkgLock: inputMeasurements.inputs.canonicalPkgLock.actual_sha256,
+      ...Object.fromEntries(Object.keys(CANONICAL_INPUTS).map(key => [key, inputMeasurements.inputs[key].actual_sha256]))
     };
     fs.writeFileSync(path.join(evidenceDir, 'TASK_OWNERSHIP.json'), JSON.stringify(ownership, null, 2));
 
@@ -650,6 +684,7 @@ const main = (options = {}) => {
     if (hashMismatches.length > 0) {
       throw new Error(`Input baseline verification FAILED:\n  ${hashMismatches.join('\n  ')}`);
     }
+    verifyCanonicalInputs(path.join(repoRoot, 'frontend'), EXPECTED);
     console.log('All input checksums match exact expected baseline.');
 
     const identityData = JSON.parse(fs.readFileSync(inputIdentity, 'utf8'));
@@ -697,13 +732,7 @@ const main = (options = {}) => {
       };
       walkAndCopy(srcDir, targetDir);
 
-      const scriptsDir = path.join(targetDir, 'scripts');
-      const patchesDir = path.join(targetDir, 'patches/once-ui');
-      fs.mkdirSync(scriptsDir, { recursive: true });
-      fs.mkdirSync(patchesDir, { recursive: true });
-      fs.copyFileSync(inputHelper, path.join(scriptsDir, 'once-ui-patch.cjs'));
-      fs.copyFileSync(inputPatch, path.join(patchesDir, '@once-ui-system+core+2.0.0.patch'));
-      fs.copyFileSync(inputIdentity, path.join(patchesDir, 'once-ui-source-identity.json'));
+      verifyCanonicalInputs(targetDir, EXPECTED);
 
       const pkgPath = path.join(targetDir, 'package.json');
       return applyScratchScripts(pkgPath, SCRIPTS_TO_ADD);
@@ -1103,6 +1132,8 @@ if (require.main === module) {
     main,
     EXPECTED,
     SCRIPTS_TO_ADD,
+    CANONICAL_INPUTS,
+    verifyCanonicalInputs,
     REQUIRED_CHECKOUT_FILES,
     sha256,
     sanitize,

@@ -1,2 +1,3 @@
 package.json -text
 package-lock.json -text
+scripts/once-ui-patch.cjs -text
