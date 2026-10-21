@@ -1,0 +1,190 @@
+diff --git a/node_modules/@once-ui-system/core/dist/components/UserMenu.js b/node_modules/@once-ui-system/core/dist/components/UserMenu.js
+--- a/node_modules/@once-ui-system/core/dist/components/UserMenu.js
++++ b/node_modules/@once-ui-system/core/dist/components/UserMenu.js
+@@ -1,16 +1,26 @@
+ "use client";
+ import { jsx as _jsx } from "react/jsx-runtime";
+-import { forwardRef } from "react";
++import { forwardRef, useCallback, useRef } from "react";
+ import classNames from "clsx";
+ import { DropdownWrapper } from "./DropdownWrapper";
+ import { User } from "./User";
+ import { Column } from "./Column";
+ import styles from "./UserMenu.module.scss";
+-const UserMenu = forwardRef(({ selected = false, dropdown, minWidth, maxWidth, minHeight, placement, className, style, loading, ...userProps }, ref) => {
+-    return (_jsx(DropdownWrapper, { minWidth: minWidth, maxWidth: maxWidth, minHeight: minHeight, placement: placement, disableTriggerClick: loading, style: {
+-            borderRadius: "var(--radius-full)",
+-        }, trigger: _jsx(Column, { tabIndex: loading ? -1 : 0, padding: "4", radius: "full", cursor: loading ? "default" : "interactive", border: selected ? "neutral-medium" : "transparent", background: selected ? "neutral-strong" : "transparent", pointerEvents: loading ? "none" : "auto", className: classNames(className || "", selected ? styles.selected : "", styles.wrapper), style: style, children: _jsx(User, { loading: loading, ...userProps }) }), dropdown: dropdown }));
++const UserMenu = forwardRef(({ selected = false, dropdown, minWidth, maxWidth, minHeight, placement, className, style, loading, "aria-label": label, ...userProps }, ref) => {
++    const controlRef = useRef(null);
++    const mergedRef = useCallback((element) => {
++        const internal = controlRef.current;
++        if (internal) internal.current = element;
++        const cleanup = typeof ref === "function" ? ref(element) : undefined;
++        if (ref && typeof ref !== "function") ref.current = element;
++        return () => {
++            if (internal) internal.current = null;
++            if (typeof cleanup === "function") cleanup();
++            else if (typeof ref === "function") ref(null);
++            else if (ref) ref.current = null;
++        };
++    }, [ref]);
++    return (_jsx(DropdownWrapper, { minWidth, maxWidth, minHeight, placement, disableTriggerClick: loading, style: { borderRadius: "var(--radius-full)" }, trigger: (triggerProps) => { controlRef.current = triggerProps.ref; return _jsx(Column, { ...triggerProps, ref: mergedRef, "aria-label": label?.trim() || userProps.name?.trim() || "Account menu", "aria-busy": loading || undefined, padding: "4", radius: "full", cursor: loading ? "default" : "interactive", border: selected ? "neutral-medium" : "transparent", background: selected ? "neutral-strong" : "transparent", pointerEvents: loading ? "none" : "auto", className: classNames(className || "", selected ? styles.selected : "", styles.wrapper), style, children: _jsx(User, { loading, ...userProps }) }); }, dropdown }));
+ });
+ UserMenu.displayName = "UserMenu";
+ export { UserMenu };
+-//# sourceMappingURL=UserMenu.js.map
+\ No newline at end of file
+diff --git a/node_modules/@once-ui-system/core/dist/components/UserMenu.d.ts b/node_modules/@once-ui-system/core/dist/components/UserMenu.d.ts
+--- a/node_modules/@once-ui-system/core/dist/components/UserMenu.d.ts
++++ b/node_modules/@once-ui-system/core/dist/components/UserMenu.d.ts
+@@ -3,6 +3,8 @@
+ import { type UserProps } from "./User";
+ import type { Placement } from "../types";
+ interface UserMenuProps extends UserProps, Pick<DropdownWrapperProps, "minHeight" | "minWidth" | "maxWidth"> {
++    /** Accessible account trigger name; defaults to name, then Account menu. */
++    "aria-label"?: string;
+     selected?: boolean;
+     placement?: Placement;
+     dropdown?: React.ReactNode;
+diff --git a/node_modules/@once-ui-system/core/dist/components/DropdownWrapper.js b/node_modules/@once-ui-system/core/dist/components/DropdownWrapper.js
+--- a/node_modules/@once-ui-system/core/dist/components/DropdownWrapper.js
++++ b/node_modules/@once-ui-system/core/dist/components/DropdownWrapper.js
+@@ -16,6 +16,8 @@
+ let dropdownCounter = 0;
+ const isEnabledOption = (el) => !el.hasAttribute("disabled") && el.getAttribute("aria-disabled") !== "true";
+ const DropdownWrapper = forwardRef(({ trigger, onFocusCapture, onBlurCapture, dropdown, selectedOption, minHeight, onSelect, closeAfterClick = true, open: controlledIsOpen, handleArrowNavigation = true, onOpenChange, minWidth, maxWidth, fillWidth = false, placement = "bottom-start", className, style, nested = false, navigationLayout: propNavigationLayout, columns = 8, optionsCount: propOptionsCount, dropdownId: propDropdownId, disableTriggerClick = false, }, ref) => {
++    const renderTrigger = typeof trigger === "function";
++    const controlRef = useRef(null);
+     const [internalIsOpen, setInternalIsOpen] = useState(false);
+     const [mounted, setMounted] = useState(false);
+     const [focusedIndex, setFocusedIndex] = useState(-1);
+@@ -32,6 +34,8 @@
+     const isControlled = controlledIsOpen !== undefined;
+     const isOpen = isControlled ? controlledIsOpen : internalIsOpen;
+     const handleOpenChange = useCallback((newIsOpen) => {
++        if (newIsOpen && renderTrigger && disableTriggerClick)
++            return;
+         if (newIsOpen) {
+             // Close any other open dropdown before opening this one
+             if (getLastOpenedDropdown() && getLastOpenedDropdown() !== dropdownId.current) {
+@@ -62,7 +66,11 @@
+             setInternalIsOpen(newIsOpen);
+         }
+         onOpenChange?.(newIsOpen);
+-    }, [onOpenChange, isControlled, nested]);
++    }, [onOpenChange, isControlled, nested, renderTrigger, disableTriggerClick]);
++    useEffect(() => {
++        if (renderTrigger && disableTriggerClick && isOpen)
++            handleOpenChange(false);
++    }, [renderTrigger, disableTriggerClick, isOpen, handleOpenChange]);
+     // State to track if we're in a browser environment for portal rendering
+     const [isBrowser, setIsBrowser] = useState(false);
+     useEffect(() => {
+@@ -209,7 +217,7 @@
+     useEffect(() => {
+         if (isOpen && mounted) {
+             // Store the currently focused element before focusing the dropdown
+-            previouslyFocusedElement.current = document.activeElement;
++            previouslyFocusedElement.current = renderTrigger ? controlRef.current : document.activeElement;
+             requestAnimationFrame(() => {
+                 if (dropdownRef.current) {
+                     refs.setFloating(dropdownRef.current);
+@@ -252,7 +260,7 @@
+                 }
+             }
+         }
+-    }, [isOpen, mounted, refs, update, resolveOpenIndex]);
++    }, [isOpen, mounted, refs, update, resolveOpenIndex, renderTrigger]);
+     const handleClickOutside = useCallback((event) => {
+         const target = event.target;
+         // Check if the click is inside the dropdown or the wrapper
+@@ -517,14 +525,14 @@
+     }, [isOpen, handleOpenChange, handleArrowNavigation]);
+     return (_jsxs(_Fragment, { children: [_jsx(ScrollLock, { enabled: isOpen, allowScrollInElement: dropdownRef }), _jsxs(Column, { fillWidth: fillWidth, fitWidth: !fillWidth, transition: "macro-medium", style: {
+                     ...style,
+-                }, className: className, ref: wrapperRef, onFocusCapture: onFocusCapture, onBlurCapture: onBlurCapture, onClick: disableTriggerClick
++                }, className: className, ref: wrapperRef, onFocusCapture: onFocusCapture, onBlurCapture: onBlurCapture, onClick: (disableTriggerClick || renderTrigger)
+                     ? undefined
+                     : (e) => {
+                         if (!isOpen) {
+                             handleOpenChange(true);
+                             return;
+                         }
+-                    }, onKeyDown: handleKeyDown, tabIndex: -1, role: "button", "aria-haspopup": "listbox", "aria-expanded": isOpen, "data-role": "dropdown-wrapper", children: [_jsx(Row, { ref: triggerRef, fillWidth: fillWidth, fitWidth: !fillWidth, onClick: disableTriggerClick
++                    }, onKeyDown: renderTrigger ? undefined : handleKeyDown, tabIndex: -1, role: renderTrigger ? undefined : "button", "aria-haspopup": renderTrigger ? undefined : "listbox", "aria-expanded": renderTrigger ? undefined : isOpen, "data-role": "dropdown-wrapper", children: [_jsx(Row, { ref: triggerRef, fillWidth: fillWidth, fitWidth: !fillWidth, onClick: (disableTriggerClick || renderTrigger)
+                             ? undefined
+                             : (e) => {
+                                 // If already open, close on trigger click
+@@ -533,9 +541,9 @@
+                                     return;
+                                 }
+                                 handleOpenChange(true);
+-                            }, onKeyDown: (e) => {
++                            }, onKeyDown: renderTrigger ? undefined : (e) => {
+                             handleKeyDown(e);
+-                        }, role: "button", "data-is-dropdown": "true", "aria-haspopup": "true", "aria-expanded": isOpen, className: "dropdown-trigger", children: trigger }), isOpen &&
++                        }, role: renderTrigger ? undefined : "button", "data-is-dropdown": "true", "aria-haspopup": renderTrigger ? undefined : "true", "aria-expanded": renderTrigger ? undefined : isOpen, className: "dropdown-trigger", children: renderTrigger ? trigger({ ref: controlRef, role: "button", tabIndex: disableTriggerClick ? -1 : 0, "aria-haspopup": "listbox", "aria-expanded": isOpen, "aria-controls": isOpen ? `${dropdownId.current}-popup` : undefined, "aria-disabled": disableTriggerClick || undefined, onClick: () => { if (!disableTriggerClick) { controlRef.current?.focus({ preventScroll: true }); handleOpenChange(!isOpen); } }, onKeyDown: (e) => { if (disableTriggerClick) return; if (e.key === "Enter" || e.key === " ") e.stopPropagation(); handleKeyDown(e); } }) : trigger }), isOpen &&
+                         dropdown &&
+                         isBrowser &&
+                         createPortal(_jsx(FocusTrap, { containerRef: portalRef, 
+@@ -553,7 +561,7 @@
+                                         // to be measured at all.
+                                         visibility: isPositioned ? "visible" : "hidden",
+                                         transformOrigin,
+-                                    }, "data-role": "dropdown-portal", "data-is-dropdown": "true", "data-dropdown-id": dropdownId.current, "data-is-active": getLastOpenedDropdown() === dropdownId.current, onKeyDown: (e) => {
++                                    }, id: renderTrigger ? `${dropdownId.current}-popup` : undefined, "data-role": "dropdown-portal", "data-is-dropdown": "true", "data-dropdown-id": dropdownId.current, "data-is-active": getLastOpenedDropdown() === dropdownId.current, onKeyDown: (e) => {
+                                         // If handleArrowNavigation is false, let all keyboard events pass through
+                                         if (!handleArrowNavigation) {
+                                             return;
+diff --git a/node_modules/@once-ui-system/core/dist/components/DropdownWrapper.d.ts b/node_modules/@once-ui-system/core/dist/components/DropdownWrapper.d.ts
+--- a/node_modules/@once-ui-system/core/dist/components/DropdownWrapper.d.ts
++++ b/node_modules/@once-ui-system/core/dist/components/DropdownWrapper.d.ts
+@@ -7,7 +7,8 @@
+     maxWidth?: number;
+     minHeight?: number;
+     placement?: Placement;
+-    trigger: ReactNode;
++    /** Render form owns trigger semantics; spread these props on one focusable div. */
++    trigger: ReactNode | ((props: React.HTMLAttributes<HTMLDivElement> & { ref: React.RefObject<HTMLDivElement | null> }) => ReactNode);
+     dropdown: ReactNode;
+     selectedOption?: string;
+     style?: React.CSSProperties;
+diff --git a/node_modules/@once-ui-system/core/dist/components/ClientFlex.js b/node_modules/@once-ui-system/core/dist/components/ClientFlex.js
+--- a/node_modules/@once-ui-system/core/dist/components/ClientFlex.js
++++ b/node_modules/@once-ui-system/core/dist/components/ClientFlex.js
+@@ -74,16 +74,27 @@
+     const elementRef = useRef(null);
+     const [isTouchDevice, setIsTouchDevice] = useState(false);
+     const { currentBreakpoint } = useLayout();
+-    // Combine refs
+-    const combinedRef = (node) => {
++    const combinedRef = useCallback((node) => {
+         elementRef.current = node;
+-        if (typeof ref === "function") {
+-            ref(node);
+-        }
+-        else if (ref) {
++        const cleanup = typeof ref === "function" ? ref(node) : undefined;
++        if (ref && typeof ref !== "function") {
+             ref.current = node;
+         }
+-    };
++        if (node) {
++            return () => {
++                elementRef.current = null;
++                if (typeof cleanup === "function") {
++                    cleanup();
++                }
++                else if (typeof ref === "function") {
++                    ref(null);
++                }
++                else if (ref) {
++                    ref.current = null;
++                }
++            };
++        }
++    }, [ref]);
+     const appliedResponsiveStyles = useRef(new Set());
+     const baseStyleRef = useRef({});
+     // Responsive styles logic (client-side only)

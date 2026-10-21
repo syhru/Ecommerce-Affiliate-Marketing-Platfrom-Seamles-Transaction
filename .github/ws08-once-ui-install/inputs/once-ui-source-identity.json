@@ -1,0 +1,29 @@
+{
+  "target": "@once-ui-system/core",
+  "version": "2.0.0",
+  "files": {
+    "dist/components/UserMenu.js": {
+      "before_sha256": "67081e9e408f1ed4218e969a4b8bee5eef10b33ab4527aea8556900dbb02d280",
+      "after_sha256": "7134b43bd8a40cedb40fba2c6a1df06bcc88530478084cdfe8cdc46a92d62ab5"
+    },
+    "dist/components/UserMenu.d.ts": {
+      "before_sha256": "8cac068f195729099a34ca7746459f07757fd5986cbc2982b92ed5648a18c46e",
+      "after_sha256": "c300609f299e59f2aebb5a062314d0095fa748eb6b6a272d736c3d8bceddc0a6"
+    },
+    "dist/components/DropdownWrapper.js": {
+      "before_sha256": "264acde8da260258141e5276716074796f485070ed762b6ef8963d78d6e0a513",
+      "after_sha256": "921f2ea04276e3226a5577049bca2e8ff03f3b5dab783d903850db865e02c081"
+    },
+    "dist/components/DropdownWrapper.d.ts": {
+      "before_sha256": "91b76e916c056c91981f1acbdf5feb7652e6c05edd42915758c0c5791b38cdc6",
+      "after_sha256": "bcc535c7712dfdd59805a681b6cc3a30f03c36e9cf514157909583c875743e54"
+    },
+    "dist/components/ClientFlex.js": {
+      "before_sha256": "13d791a82f9342f3d75cd5acbfa3b361d884467f195fd3b8ba7f66dd79ab9558",
+      "after_sha256": "b4e8f0f7a3d8749668e026b899be7fe1815b40c5aa82fb8b0a503c5b7943fd0d"
+    }
+  },
+  "tool_version": "8.0.1",
+  "patch_file": "@once-ui-system+core+2.0.0.patch",
+  "patch_sha256": "8738f5c16076bfce1a4c72c7206c2eca04e429796a16f5423424afd45be97891"
+}
