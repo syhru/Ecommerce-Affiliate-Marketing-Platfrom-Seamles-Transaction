@@ -6,15 +6,25 @@ const vm = require('node:vm');
 const ts = require('typescript');
 
 const root = path.resolve(__dirname, '..');
-function harness({ token = 'credential', status = 200, affiliate = 'active' } = {}) {
-  const oldUser = { id: 1, name: 'Old', role: 'affiliate', email_verified: false,
-    affiliate_profile: { status: affiliate } };
+function serverUser(affiliate = 'active') {
+  return { id: 1, name: 'Synthetic User', email: 'synthetic@example.test',
+    role: 'affiliate', telegram_chat_id: null, email_verified: true,
+    is_active: true, created_at: '2026-01-01T00:00:00.000000Z',
+    affiliate_profile: { id: 1, user_id: 1, referral_code: 'SYNTHETIC',
+      commission_rate: 5, balance: 0, total_earned: 0, status: affiliate,
+      approved_at: null, bank_name: null, bank_account_number: null,
+      bank_account_holder: null, created_at: '2026-01-01T00:00:00.000000Z' } };
+}
+
+function harness({ token = 'credential', status = 200, affiliate = 'active',
+  body = { data: serverUser(affiliate) } } = {}) {
+  const oldUser = { ...serverUser(affiliate), email_verified: false };
   const local = new Map([['auth_user_storage', JSON.stringify({ state: {
     user: oldUser, authStatus: 'authenticated', isLoading: false }, version: 0 })]]);
   const storage = { getItem: (k) => local.get(k) ?? null,
     setItem: (k, v) => local.set(k, v), removeItem: (k) => local.delete(k) };
   let cookie = token ? `auth_token=${token}` : '';
-  let resolveRequest;
+  const responders = [];
   const requests = [];
   const redirects = [];
   const effects = new Map();
@@ -39,10 +49,12 @@ function harness({ token = 'credential', status = 200, affiliate = 'active' } = 
     }).outputText;
     function importModule(name) {
       if (name === '@/src/stores/useUserStore') return { useUserStore: store };
+      if (name === '@/components/AuthRetry') return load('components/AuthRetry.tsx');
       if (name.startsWith('@/src/lib/')) return load(`${name.slice(2)}.ts`);
       if (name === 'zustand' || name === 'zustand/middleware') return require(name);
       if (name === 'react') return {
         Suspense: 'Suspense',
+        useCallback: (fn) => fn,
         useState: (initial) => { stateIndex++; return [initial, () => {
           assert.equal(rendering, false, 'state update during render');
         }]; },
@@ -57,17 +69,21 @@ function harness({ token = 'credential', status = 200, affiliate = 'active' } = 
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
       if (name === 'next/navigation') return { useRouter: () => ({
         replace: (url) => redirects.push(url), push: (url) => redirects.push(url) }),
-        useSearchParams: () => ({ get: () => null }) };
+        useParams: () => ({ orderNumber: 'SYNTHETIC-ORDER' }),
+        usePathname: () => '/orders/SYNTHETIC-ORDER',
+        useSearchParams: () => ({ get: () => null, toString: () => '' }) };
       if (name === 'sonner') return { toast: { error() {}, info() {}, warning() {} } };
       return new Proxy({}, { get: (_, key) => key === '__esModule' ? true : String(key) });
     }
     vm.runInNewContext(source, { module, exports: module.exports, require: importModule,
-      console, process, document, window, localStorage: storage,
+      console, process: { env: {} }, document, window, localStorage: storage,
       sessionStorage: { getItem: () => null }, fetch: (url) => {
         requests.push(url);
-        return new Promise((resolve) => { resolveRequest = () => resolve(new Response(
-          JSON.stringify(status === 401 ? { message: 'Unauthenticated' } : { ...oldUser, email_verified: true }),
-          { status, headers: { 'content-type': 'application/json' } })); });
+        return new Promise((resolve, reject) => {
+          responders.push({ resolve: (payload = body, code = status) => resolve(new Response(
+            JSON.stringify(code === 401 ? { message: 'Unauthenticated' } : payload),
+            { status: code, headers: { 'content-type': 'application/json' } })), reject });
+        });
       } });
     return module.exports;
   }
@@ -79,13 +95,19 @@ function harness({ token = 'credential', status = 200, affiliate = 'active' } = 
     effectIndex = 0; stateIndex = 0; rendering = true;
     let tree = load(file).default();
     // /login wraps its inner component in Suspense.
-    if (tree.type === 'Suspense') tree = tree.props.children.type();
+    if (tree?.type === 'Suspense') tree = tree.props.children.type();
+    if (tree?.type?.name === 'AuthRetry') tree = tree.type(tree.props);
     rendering = false;
     return tree;
   }
   function runEffects() { for (const fn of pending.splice(0)) fn(); }
   return { realStore, local, document, requests, redirects, render, runEffects,
-    resolve: async () => { resolveRequest(); await new Promise(setImmediate); } };
+    resolve: async (payload = body, code = status, index = responders.length - 1) => {
+      responders[index].resolve(payload, code); await new Promise(setImmediate);
+    },
+    reject: async (index = responders.length - 1) => {
+      responders[index].reject(new Error('offline')); await new Promise(setImmediate);
+    } };
 }
 
 for (const page of ['app/login/page.tsx', 'app/register/page.tsx']) {
@@ -160,6 +182,153 @@ test('inactive affiliate direct page stays explanatory without reactivation or r
   assert.match(source, /Akun Affiliate Nonaktif/);
   assert.doesNotMatch(source, /apiPost|apiPut|apiPatch/);
 });
+
+test('canonical /user rejects malformed identities without asserting guest or deleting credentials', async () => {
+  const invalid = [null, {}, serverUser(), { data: null }, { data: {} },
+    ...[{ id: 0 }, { name: '' }, { email: null }, { role: 'admin' },
+      { email_verified: 'true' }, { is_active: 1 }, { telegram_chat_id: 123 },
+      { created_at: false }, { affiliate_profile: {} },
+      { affiliate_profile: { ...serverUser().affiliate_profile, status: 'unexpected' } }]
+      .map((fields) => ({ data: { ...serverUser(), ...fields } }))];
+  for (const body of invalid) {
+    const h = harness({ body });
+    const validation = h.realStore.getState().fetchUser();
+    await h.resolve(); await validation;
+    const state = h.realStore.getState();
+    assert.equal(state.authStatus, 'unknown', JSON.stringify(body));
+    assert.equal(state.user, null);
+    assert.equal(state.isLoading, false);
+    assert.ok(state.authError, 'retryable validation error is exposed');
+    assert.equal(h.document.cookie, 'auth_token=credential');
+  }
+});
+
+test('omitted affiliate relation stays unresolved with an explicit canonical retry', async () => {
+  const partial = serverUser(); delete partial.affiliate_profile;
+  const h = harness({ body: { data: partial } });
+  const first = h.realStore.getState().fetchUser(); await h.resolve(); await first;
+  assert.equal(h.realStore.getState().authStatus, 'authenticated');
+  assert.equal(Object.hasOwn(h.realStore.getState().user, 'affiliate_profile'), false);
+  assert.ok(h.realStore.getState().authError);
+  const retry = h.realStore.getState().fetchUser();
+  await h.resolve({ data: { ...serverUser(), role: 'customer', affiliate_profile: null } }); await retry;
+  assert.equal(h.realStore.getState().user.affiliate_profile, null);
+  assert.equal(h.realStore.getState().authError, null);
+});
+
+test('setUser treats login/profile values as refresh hints, never authentication or missing-relation truth', async () => {
+  const h = harness();
+  const initial = serverUser(); delete initial.affiliate_profile;
+  h.realStore.getState().setUser(initial);
+  assert.equal(h.requests.length, 1);
+  assert.equal(h.realStore.getState().authStatus, 'validating');
+  assert.equal(h.realStore.getState().user, null);
+  await h.resolve({ data: serverUser() });
+  assert.equal(h.realStore.getState().authStatus, 'authenticated');
+  h.realStore.getState().setUser({ ...initial, name: 'Unconfirmed change' });
+  assert.equal(h.requests.length, 2);
+  assert.notEqual(h.realStore.getState().user.name, 'Unconfirmed change');
+  assert.equal(h.realStore.getState().user.affiliate_profile.status, 'active');
+  await h.resolve({ data: { ...serverUser(), name: 'Confirmed change' } });
+  assert.equal(h.realStore.getState().user.name, 'Confirmed change');
+  h.realStore.getState().setUser(null);
+  assert.equal(h.realStore.getState().authStatus, 'guest');
+  assert.equal(h.realStore.getState().user, null);
+});
+
+test('W8AR F01 profile keeps a server-confirmed session after transient revalidation failure', async () => {
+  const h = harness();
+  const initial = h.realStore.getState().fetchUser(); await h.resolve(); await initial;
+  h.render('app/profile/page.tsx'); h.runEffects();
+  const prior = h.realStore.getState().user;
+  const refresh = h.realStore.getState().fetchUser();
+  await h.reject(); await refresh;
+  h.render('app/profile/page.tsx'); h.runEffects();
+  assert.deepEqual(h.redirects, [], 'transient failure must not send a valid session to login');
+  assert.equal(h.realStore.getState().user, prior);
+  assert.equal(h.realStore.getState().authStatus, 'authenticated');
+  assert.ok(h.realStore.getState().authError);
+});
+
+test('W8AR F01 profile initial offline uncertainty neither redirects nor trusts cached user', async () => {
+  const h = harness();
+  const initial = h.realStore.getState().fetchUser(); await h.reject(); await initial;
+  h.render('app/profile/page.tsx'); h.runEffects();
+  assert.deepEqual(h.redirects, [], 'unknown is not confirmed guest');
+  assert.equal(h.realStore.getState().user, null);
+  assert.equal(h.realStore.getState().authStatus, 'unknown');
+  assert.equal(h.realStore.getState().isLoading, false);
+});
+
+const protectedPages = [
+  ['profile', '/login?redirect=/profile'],
+  ['orders', '/login?redirect=/orders'],
+  ['orders/[orderNumber]', '/login?redirect=/orders/SYNTHETIC-ORDER'],
+  ['checkout', '/login?redirect=/checkout'],
+  ['telegram/setup', '/login?redirect=/telegram/setup'],
+  ...['dashboard', 'register', 'clicks', 'commissions', 'withdraw', 'pending', 'inactive']
+    .map((page) => [`affiliate/${page}`, `/login?redirect=/affiliate/${page}`]),
+  ['affiliate/rejected', '/login'],
+];
+
+function nodes(tree) {
+  if (!tree || typeof tree !== 'object') return [];
+  return [tree, ...[tree.props?.children].flat(Infinity).flatMap(nodes)];
+}
+function retryButton(tree) {
+  return nodes(tree).find((node) => node.type === 'button' &&
+    node.props.children === 'Coba lagi');
+}
+
+for (const [route, login] of protectedPages) {
+  const page = `app/${route}/page.tsx`;
+  test(`W8AR F01 ${route}: initial offline shows reachable canonical retry, not guest or cached identity`, async () => {
+    const h = harness();
+    const first = h.realStore.getState().fetchUser(); await h.reject(); await first;
+    const tree = h.render(page); h.runEffects();
+    assert.deepEqual(h.redirects, [], 'unknown must not redirect');
+    assert.equal(h.requests.length, 1, 'unknown must not load protected data');
+    assert.equal(h.realStore.getState().user, null, 'cached-only identity stays discarded');
+    const button = retryButton(tree);
+    assert.ok(button, 'settled uncertainty exposes a retry rather than endless loading');
+    const errorText = h.realStore.getState().authError;
+    assert.ok(nodes(tree).some((node) => node.props?.children === errorText), 'canonical error is visible');
+    button.props.onClick();
+    assert.equal(h.requests.length, 2, 'retry calls canonical fetchUser');
+    assert.ok(h.requests[1].endsWith('/user'));
+    assert.equal(h.realStore.getState().isLoading, true);
+    assert.equal(retryButton(h.render(page)), undefined, 'no error/retry UI while validating');
+    h.runEffects(); assert.deepEqual(h.redirects, []);
+    await h.resolve(undefined, 401);
+    h.render(page); h.runEffects();
+    assert.deepEqual(h.redirects, [login], 'current 401 still redirects to login');
+  });
+  test(`W8AR F01 ${route}: initial loading does not flash auth error`, () => {
+    const h = harness();
+    assert.equal(h.realStore.getState().isLoading, true);
+    const tree = h.render(page); h.runEffects();
+    assert.equal(retryButton(tree), undefined);
+    assert.deepEqual(h.redirects, []);
+    assert.deepEqual(h.requests, []);
+  });
+  test(`W8AR F01 ${route}: confirmed guest redirects without protected requests`, async () => {
+    const h = harness({ token: null });
+    await h.realStore.getState().fetchUser();
+    h.render(page); h.runEffects();
+    assert.deepEqual(h.redirects, [login]);
+    assert.deepEqual(h.requests, []);
+  });
+  test(`W8AR F01 ${route}: confirmed session current 401 still redirects`, async () => {
+    const h = harness();
+    const first = h.realStore.getState().fetchUser(); await h.resolve(); await first;
+    const refresh = h.realStore.getState().fetchUser(); await h.resolve(undefined, 401); await refresh;
+    h.render(page); h.runEffects();
+    assert.equal(h.realStore.getState().user, null);
+    assert.equal(h.realStore.getState().authStatus, 'guest');
+    assert.deepEqual(h.redirects, [login]);
+    assert.equal(h.requests.length, 2);
+  });
+}
 
 test('logout while /user is in flight cannot restore authenticated user', async () => {
   const h = harness(); const validation = h.realStore.getState().fetchUser();

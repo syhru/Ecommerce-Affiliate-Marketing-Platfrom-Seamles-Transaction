@@ -1,5 +1,7 @@
 'use client';
 
+import { AuthRetry } from '@/components/AuthRetry';
+
 import { Footer } from '@/components/Footer';
 import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
@@ -13,12 +15,12 @@ import { toast } from 'sonner';
 
 export default function AffiliatePendingPage() {
   const router = useRouter();
-  const { user, setUser, isLoading: isStoreLoading } = useUserStore();
+  const { user, authStatus, setUser, isLoading: isStoreLoading } = useUserStore();
   const [isApproved, setIsApproved] = useState(false);
   const [isVerifying, setIsVerifying] = useState(true);
 
   useEffect(() => {
-    if (isStoreLoading) return;
+    if (isStoreLoading || authStatus === 'unknown') return;
 
     // 0. Guard Cepat via Zustand Store
     if (user) {
@@ -85,7 +87,9 @@ export default function AffiliatePendingPage() {
       window.removeEventListener('popstate', handlePopState);
       clearInterval(pollInterval);
     };
-  }, [router, user, isStoreLoading, setUser]);
+  }, [router, user, isStoreLoading, authStatus, setUser]);
+
+  if (authStatus === 'unknown' && !isStoreLoading) return <AuthRetry />;
 
   if (isVerifying) {
     return (

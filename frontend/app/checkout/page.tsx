@@ -1,5 +1,7 @@
 'use client';
 
+import { AuthRetry } from '@/components/AuthRetry';
+
 import { Footer } from '@/components/Footer';
 import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
@@ -43,7 +45,7 @@ interface CheckoutForm {
 // ─── Component ────────────────────────────────────────────────
 export default function CheckoutPage() {
   const router = useRouter();
-  const { user, isLoading: isStoreLoading } = useUserStore();
+  const { user, authStatus, isLoading: isStoreLoading } = useUserStore();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isMounted, setIsMounted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -61,7 +63,7 @@ export default function CheckoutPage() {
   });
 
   useEffect(() => {
-    if (isStoreLoading) return;
+    if (isStoreLoading || authStatus === 'unknown') return;
     if (!user) {
       router.push('/login?redirect=/checkout');
       return;
@@ -94,7 +96,7 @@ export default function CheckoutPage() {
 
       setIsMounted(true);
     }
-  }, [router, user, isStoreLoading, isMounted]);
+  }, [router, user, isStoreLoading, authStatus, isMounted]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -205,6 +207,8 @@ export default function CheckoutPage() {
       setIsSubmitting(false);
     }
   };
+
+  if (authStatus === 'unknown' && !isStoreLoading) return <AuthRetry />;
 
   if (!isMounted) return null;
 

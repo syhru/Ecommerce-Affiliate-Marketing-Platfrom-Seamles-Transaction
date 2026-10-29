@@ -1,5 +1,7 @@
 'use client';
 
+import { AuthRetry } from '@/components/AuthRetry';
+
 import { Footer } from '@/components/Footer';
 import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
@@ -17,7 +19,7 @@ import { toast } from 'sonner';
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, setUser, isLoading: isStoreLoading } = useUserStore();
+  const { user, authStatus, setUser, isLoading: isStoreLoading } = useUserStore();
   const [isLoading, setIsLoading] = useState(true);
 
   // ── Profile Form State ──
@@ -39,7 +41,7 @@ export default function ProfilePage() {
 
   // ── 1. Fetch User Data ──
   useEffect(() => {
-    if (isStoreLoading) return;
+    if (isStoreLoading || authStatus === 'unknown') return;
     if (!user) {
       router.push('/login?redirect=/profile');
       return;
@@ -51,7 +53,7 @@ export default function ProfilePage() {
       setTelegramId(user.telegram_chat_id || '');
       setIsLoading(false);
     }
-  }, [user, isStoreLoading, router, isLoading]);
+  }, [user, isStoreLoading, authStatus, router, isLoading]);
 
   // ── 2. Handlers ──
   const handleUpdateProfile = async () => {
@@ -127,6 +129,8 @@ export default function ProfilePage() {
     }
   };
 
+
+  if (authStatus === 'unknown' && !isStoreLoading) return <AuthRetry />;
 
   if (isLoading || !user) {
     return (
