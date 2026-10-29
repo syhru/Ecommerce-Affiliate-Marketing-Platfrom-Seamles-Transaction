@@ -1,5 +1,7 @@
 'use client';
 
+import { AuthRetry } from '@/components/AuthRetry';
+
 import { Footer } from '@/components/Footer';
 import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
@@ -38,13 +40,13 @@ const getStatusBadge = (status: string) => {
 // ─── Component ────────────────────────────────────────────────
 export default function OrdersPage() {
   const router = useRouter();
-  const { user, isLoading: isStoreLoading } = useUserStore();
+  const { user, authStatus, isLoading: isStoreLoading } = useUserStore();
   const [orders, setOrders] = useState<Order[]>([]);
   const [meta, setMeta] = useState({ current_page: 1, last_page: 1 });
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (isStoreLoading) return;
+    if (isStoreLoading || authStatus === 'unknown') return;
     if (!user) {
       const isLoggingOut = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('tdr_is_logging_out') === 'true';
       if (!isLoggingOut) {
@@ -53,7 +55,7 @@ export default function OrdersPage() {
       return;
     }
     loadOrders(1);
-  }, [router, user, isStoreLoading]);
+  }, [router, user, isStoreLoading, authStatus]);
 
   const loadOrders = async (page: number) => {
     setIsLoading(true);
@@ -71,6 +73,8 @@ export default function OrdersPage() {
       setIsLoading(false);
     }
   };
+  if (authStatus === 'unknown' && !isStoreLoading) return <AuthRetry />;
+
   return (
     <main className="min-h-screen bg-[#f8f9fa] font-sans pt-16 flex flex-col">
       <Navbar />

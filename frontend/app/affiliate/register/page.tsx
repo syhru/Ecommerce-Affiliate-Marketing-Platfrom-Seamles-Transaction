@@ -1,5 +1,7 @@
 'use client';
 
+import { AuthRetry } from '@/components/AuthRetry';
+
 import { Footer } from '@/components/Footer';
 import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
@@ -49,7 +51,7 @@ const HOW_IT_WORKS = [
 // ─── Main Component ────────────────────────────────────────────
 export default function AffiliateRegisterPage() {
   const router = useRouter();
-  const { user, fetchUser, isLoading: isStoreLoading } = useUserStore();
+  const { user, authStatus, fetchUser, isLoading: isStoreLoading } = useUserStore();
   const [bankName, setBankName]         = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [accountHolder, setAccountHolder] = useState('');
@@ -62,7 +64,7 @@ export default function AffiliateRegisterPage() {
 
   // Guard: must be logged in, verified & status check
   useEffect(() => {
-    if (isStoreLoading) return;
+    if (isStoreLoading || authStatus === 'unknown') return;
 
     if (!user || !hasAuthCredential()) {
       toast.info('Kamu perlu login dulu untuk mendaftar affiliate.');
@@ -88,7 +90,7 @@ export default function AffiliateRegisterPage() {
 
     // Pre-fill account holder dengan nama user
     setAccountHolder(user.name);
-  }, [router, user, isStoreLoading]);
+  }, [router, user, isStoreLoading, authStatus]);
 
   const accountLabel = isEwallet(bankName) ? 'Nomor HP / Akun E-Wallet' : 'Nomor Rekening';
 
@@ -132,6 +134,8 @@ export default function AffiliateRegisterPage() {
       setIsLoading(false);
     }
   };
+
+  if (authStatus === 'unknown' && !isStoreLoading) return <AuthRetry />;
 
   if (!user) return null; // loading / redirect in progress
 

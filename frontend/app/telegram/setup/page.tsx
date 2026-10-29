@@ -1,5 +1,7 @@
 'use client';
 
+import { AuthRetry } from '@/components/AuthRetry';
+
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -19,12 +21,12 @@ import { useUserStore } from '@/src/stores/useUserStore';
 // ─── Main Component ────────────────────────────────────────────
 export default function TelegramSetupPage() {
   const router = useRouter();
-  const { user, setUser, isLoading: isStoreLoading } = useUserStore();
+  const { user, authStatus, setUser, isLoading: isStoreLoading } = useUserStore();
   const [chatId, setChatId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (isStoreLoading) return;
+    if (isStoreLoading || authStatus === 'unknown') return;
     if (!user) {
       window.location.replace('/login?redirect=/telegram/setup');
       return;
@@ -35,7 +37,7 @@ export default function TelegramSetupPage() {
       window.location.replace('/');
       return;
     }
-  }, [user, isStoreLoading, router]);
+  }, [user, isStoreLoading, authStatus, router]);
 
   const handleLinkTelegram = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,6 +73,8 @@ export default function TelegramSetupPage() {
       setIsSubmitting(false);
     }
   };
+
+  if (authStatus === 'unknown' && !isStoreLoading) return <AuthRetry />;
 
   if (!user) {
     return (

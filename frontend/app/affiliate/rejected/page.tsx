@@ -1,5 +1,7 @@
 'use client';
 
+import { AuthRetry } from '@/components/AuthRetry';
+
 import { Footer } from '@/components/Footer';
 import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
@@ -10,11 +12,11 @@ import { useUserStore } from '@/src/stores/useUserStore';
 
 export default function AffiliateRejectedPage() {
   const router = useRouter();
-  const { user, isLoading } = useUserStore();
+  const { user, authStatus, isLoading } = useUserStore();
   const [isVerifying, setIsVerifying] = useState(true);
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || authStatus === 'unknown') return;
 
     if (!user) {
       router.replace('/login');
@@ -34,7 +36,9 @@ export default function AffiliateRejectedPage() {
     }
 
     setIsVerifying(false);
-  }, [router, user, isLoading]);
+  }, [router, user, isLoading, authStatus]);
+
+  if (authStatus === 'unknown' && !isLoading) return <AuthRetry />;
 
   if (isVerifying) {
     return (

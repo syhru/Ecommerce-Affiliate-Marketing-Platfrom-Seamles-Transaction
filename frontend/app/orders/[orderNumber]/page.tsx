@@ -1,5 +1,7 @@
 'use client';
 
+import { AuthRetry } from '@/components/AuthRetry';
+
 import { Footer } from '@/components/Footer';
 import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
@@ -42,7 +44,7 @@ export default function OrderTrackingPage() {
   const searchParams = useSearchParams();
   const orderNumber = params.orderNumber as string;
 
-  const { user, isLoading: isStoreLoading } = useUserStore();
+  const { user, authStatus, isLoading: isStoreLoading } = useUserStore();
   const [order, setOrder] = useState<Order | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -55,7 +57,7 @@ export default function OrderTrackingPage() {
   }, [pathname, router, searchParams]);
 
   useEffect(() => {
-    if (isStoreLoading) return;
+    if (isStoreLoading || authStatus === 'unknown') return;
     if (!user) {
       router.push(`/login?redirect=/orders/${orderNumber}`);
       return;
@@ -74,8 +76,10 @@ export default function OrderTrackingPage() {
     };
 
     loadOrderDetail();
-  }, [orderNumber, router, user, isStoreLoading]);
+  }, [orderNumber, router, user, isStoreLoading, authStatus]);
 
+
+  if (authStatus === 'unknown' && !isStoreLoading) return <AuthRetry />;
 
   if (isLoading) {
     return (

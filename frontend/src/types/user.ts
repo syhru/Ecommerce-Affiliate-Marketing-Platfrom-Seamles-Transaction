@@ -20,6 +20,11 @@ export interface User {
   created_at: string | null;
 }
 
+/** Standalone GET /user resource; apiGet preserves this envelope. */
+export interface UserResponse {
+  data: User;
+}
+
 export interface LoginCredentials {
   email: string;
   password: string;

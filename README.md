@@ -87,6 +87,26 @@ npm run lint
 
 `npm test` runs the existing 28 Node VM/module tests, not browser E2E. CI-equivalent builds use `NEXT_PUBLIC_API_URL=http://localhost:8000/api` and `NEXT_TELEMETRY_DISABLED=1`, without a developer `.env.local`. Next's Google font build may require network access.
 
+## Header4 integration (WS-08)
+
+The shared Navbar composes Header4 with `@once-ui-system/core@2.0.0` UserMenu
+and its internal dropdown. Run `npm run verify:once-ui` from `frontend/` to
+check the accepted five-file patch (also checked by prebuild). Do not edit
+installed vendor files during UI verification. Sass utilities and light tokens
+are scoped to the header and account portal, without a global Once reset or
+document theme provider. Standalone pages retain their mounting and theme.
+The portal uses a measured header/banner boundary and internal scrolling.
+
+For isolated verification, copy frontend source without `.env*` and reuse existing
+dependencies in a task-owned runtime. Set `NEXT_PUBLIC_API_URL=http://127.0.0.1:9/api`
+and `NEXT_TELEMETRY_DISABLED=1`, and intercept browser API/external requests with
+synthetic fixtures. Run patch verification, typecheck, `npm test`, production
+build and advisory lint. Node auth/consumer/race tests are not browser focus or
+geometry proof: separately test keyboard/same-route focus, delayed auth,
+logout/retry, short-height scrolling and light/dark page preservation.
+Unverified orders/dashboard API access remains a WS-09 dependency; menu visibility
+does not bypass destination authorization.
+
 ## CI and lint policy
 
 `.github/workflows/verification.yml` runs separate PHP 8.3 backend and Node 24 frontend jobs on push and pull requests. Locked installs, full PHPUnit suite, frontend typecheck, Node tests and production build are mandatory gates.

@@ -1,5 +1,7 @@
 'use client';
 
+import { AuthRetry } from '@/components/AuthRetry';
+
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -49,7 +51,7 @@ function StatusBadge({ status }: { status: string }) {
 // ─── Main Component ────────────────────────────────────────────
 export default function AffiliateWithdrawPage() {
   const router = useRouter();
-  const { user, isLoading: isStoreLoading } = useUserStore();
+  const { user, authStatus, isLoading: isStoreLoading } = useUserStore();
   
   // Data States
   const [balance, setBalance]             = useState<number>(0);
@@ -93,14 +95,14 @@ export default function AffiliateWithdrawPage() {
   }, [router]);
 
   useEffect(() => {
-    if (isStoreLoading) return;
+    if (isStoreLoading || authStatus === 'unknown') return;
 
     if (!user) {
       router.push('/login?redirect=/affiliate/withdraw');
       return;
     }
     loadInitialData();
-  }, [loadInitialData, router, user, isStoreLoading]);
+  }, [loadInitialData, router, user, isStoreLoading, authStatus]);
 
   // Handle Fetch More History
   const loadMoreHistory = async () => {
@@ -174,6 +176,8 @@ export default function AffiliateWithdrawPage() {
     setAmountStr(formatted);
   };
 
+
+  if (authStatus === 'unknown' && !isStoreLoading) return <AuthRetry />;
 
   if (isLoading) {
     return (

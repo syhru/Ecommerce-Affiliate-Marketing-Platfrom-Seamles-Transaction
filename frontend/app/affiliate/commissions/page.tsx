@@ -1,5 +1,7 @@
 'use client';
 
+import { AuthRetry } from '@/components/AuthRetry';
+
 import { Footer } from '@/components/Footer';
 import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
@@ -46,20 +48,20 @@ const getStatusBadge = (status: CommissionStatus | string) => {
 
 export default function CommissionsPage() {
   const router = useRouter();
-  const { user, isLoading: isStoreLoading } = useUserStore();
+  const { user, authStatus, isLoading: isStoreLoading } = useUserStore();
   const [data, setData] = useState<Commission[]>([]);
   const [meta, setMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (isStoreLoading) return;
+    if (isStoreLoading || authStatus === 'unknown') return;
 
     if (!user) {
       router.push('/login?redirect=/affiliate/commissions');
       return;
     }
     loadCommissions(1);
-  }, [router, user, isStoreLoading]);
+  }, [router, user, isStoreLoading, authStatus]);
 
   const loadCommissions = async (page: number) => {
     setIsLoading(true);
@@ -73,6 +75,8 @@ export default function CommissionsPage() {
       setIsLoading(false);
     }
   };
+
+  if (authStatus === 'unknown' && !isStoreLoading) return <AuthRetry />;
 
   if (isLoading && data.length === 0) {
     return (

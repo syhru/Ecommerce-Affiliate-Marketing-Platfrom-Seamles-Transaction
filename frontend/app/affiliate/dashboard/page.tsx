@@ -1,5 +1,7 @@
 'use client';
 
+import { AuthRetry } from '@/components/AuthRetry';
+
 import { Footer } from '@/components/Footer';
 import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
@@ -53,7 +55,7 @@ function StatCard({ title, value, icon, colorClass, isCurrency = false }: { titl
 // ─── Main Component ────────────────────────────────────────────
 export default function AffiliateDashboardPage() {
   const router = useRouter();
-  const { user, isLoading: isStoreLoading } = useUserStore();
+  const { user, authStatus, isLoading: isStoreLoading } = useUserStore();
   const [data, setData] = useState<AffiliateDashboardData | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProductSlug, setSelectedProductSlug] = useState<string>('');
@@ -61,7 +63,7 @@ export default function AffiliateDashboardPage() {
 
   // 1. Cek autentikasi & fetch data
   useEffect(() => {
-    if (isStoreLoading) return;
+    if (isStoreLoading || authStatus === 'unknown') return;
 
     if (!user) {
       router.push('/login?redirect=/affiliate/dashboard');
@@ -116,7 +118,7 @@ export default function AffiliateDashboardPage() {
 
     loadDashboard();
     loadProducts();
-  }, [router, user, isStoreLoading]);
+  }, [router, user, isStoreLoading, authStatus]);
 
   // 2. Action Handlers
   const handleCopyLink = () => {
@@ -136,6 +138,8 @@ export default function AffiliateDashboardPage() {
     toast.info('Fitur penarikan (withdraw) segera hadir di versi terbaru.');
     // Integrasi /api/affiliate/withdraw 
   };
+
+  if (authStatus === 'unknown' && !isStoreLoading) return <AuthRetry />;
 
   return (
     <main className="min-h-screen bg-[#f8f9fa] font-sans pt-16 flex flex-col">

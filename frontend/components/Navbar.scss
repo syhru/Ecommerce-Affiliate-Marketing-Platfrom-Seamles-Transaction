@@ -1,0 +1,128 @@
+@use 'sass:meta';
+
+// Utilities are compiled under this boundary, including the account body portal.
+// No Once global reset, tokens :root, or document theme provider is imported.
+.tdr-header,
+[data-role='dropdown-portal']:has(.tdr-account-overlay) {
+  @include meta.load-css('../node_modules/@once-ui-system/core/dist/css/styles.css');
+  --static-transparent: transparent;
+  --static-white: #fff;
+  --static-black: #0f172a;
+  --static-space-0: 0;
+  --static-space-1: 1px;
+  --static-space-2: 2px;
+  --static-space-4: 4px;
+  --static-space-8: 8px;
+  --static-space-12: 12px;
+  --static-space-16: 16px;
+  --static-space-20: 20px;
+  --static-space-24: 24px;
+  --static-space-32: 32px;
+  --static-space-48: 48px;
+  --radius-full: 999px;
+  --radius-m: 8px;
+  --radius-l: 12px;
+  --neutral-on-background-strong: #172554;
+  --neutral-on-background-weak: #475569;
+  --neutral-background-strong: #e2e8f0;
+  --neutral-background-medium: #f1f5f9;
+  --neutral-background-weak: #f8fafc;
+  --neutral-border-medium: #cbd5e1;
+  --neutral-border-strong: #64748b;
+  --neutral-alpha-weak: #f1f5f9;
+  --neutral-alpha-medium: #e2e8f0;
+  --surface-background: #fff;
+  --brand-solid-strong: #0f172a;
+  --brand-background-weak: #fffbeb;
+  --brand-alpha-weak: #fef3c7;
+  --brand-on-background-strong: #0f172a;
+  --danger-on-background-strong: #991b1b;
+  --danger-background-weak: #fef2f2;
+  --font-body: Arial, Helvetica, sans-serif;
+  --font-label: Arial, Helvetica, sans-serif;
+  --font-weight-default: 600;
+  --font-size-m: 0.875rem;
+  --font-size-s: 0.875rem;
+  --font-size-xs: 0.75rem;
+  --line-height-m: 1.5;
+  --line-height-s: 1.5;
+  --transition-micro-medium: background-color 120ms ease;
+  color: #172554;
+  color-scheme: light;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 0.875rem;
+  box-sizing: border-box;
+
+  :focus-visible { outline: 2px solid #0f172a; outline-offset: 3px; }
+  button, a { -webkit-tap-highlight-color: transparent; }
+}
+
+.tdr-header {
+  --tdr-banner-height: 0px;
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 50;
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px #0f172a0d;
+}
+.tdr-header-row { max-width: 1280px; min-height: 72px; margin: auto; padding: 8px 32px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.tdr-header-left, .tdr-header-right { display: flex; align-items: center; gap: 24px; min-width: 0; }
+.tdr-header-left { flex: 1; }
+.tdr-logo { flex: none; display: inline-flex; align-items: center; min-height: 44px; }
+.tdr-logo img { width: 120px; height: 40px; object-fit: contain; }
+.tdr-desktop-nav, .tdr-guest { display: flex; align-items: center; gap: 8px; }
+.tdr-desktop-nav a, .tdr-guest a, .tdr-mobile-panel a { min-height: 44px; padding: 12px; border-radius: 8px; font-weight: 600; text-decoration: none; color: #172554; }
+.tdr-header a:hover, .tdr-header button:hover { background-color: #f1f5f9; }
+.tdr-header nav a[aria-current='page']:not(.button) { color: #0f172a; }
+.tdr-guest .tdr-register { background: #f59e0b; color: #172554; }
+.tdr-cart { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; flex: none; border-radius: 8px; }
+.tdr-cart svg { width: 22px; height: 22px; }
+.tdr-cart-badge { position: absolute; top: -2px; right: -8px; min-width: 20px; height: 20px; padding: 0 4px; border-radius: 999px; background: #0f172a; color: white; font-size: 11px; font-weight: bold; display: flex; align-items: center; justify-content: center; border: 1px solid white; }
+.tdr-account { min-width: 0; }
+.tdr-account-trigger { min-height: 44px; max-width: 220px; }
+.tdr-account-trigger .font-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 148px; }
+.tdr-account-trigger .font-xs { display: none; }
+.tdr-account-overlay { width: min(220px, calc(100vw - 16px)); padding: 8px; background: #fff; color: #172554; }
+.tdr-account-identity { display: flex; flex-direction: column; gap: 4px; padding: 12px; overflow-wrap: anywhere; }
+.tdr-account-identity span { color: #475569; }
+.tdr-account-overlay hr { margin: 8px 0; border: 0; border-top: 1px solid #cbd5e1; }
+.tdr-account-overlay [role='option'] { min-height: 44px; text-align: left; cursor: pointer; text-decoration: none; color: #172554; }
+[data-role='dropdown-portal'] .tdr-account-overlay [role='option'][aria-selected='true'],
+[data-role='dropdown-portal'] .tdr-account-overlay [role='option'][aria-selected='true'] * { color: #0f172a; background-color: #f1f5f9; }
+.tdr-account-overlay [role='option']:hover { background: #f1f5f9; }
+.tdr-account-overlay [aria-disabled='true'] { cursor: wait; opacity: .6; }
+body [data-role='dropdown-portal']:has(.tdr-account-overlay) {
+  translate: 130px -8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  z-index: 60;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px #0f172a26;
+}
+.tdr-header .tdr-mobile-toggle { display: none !important; }
+.tdr-mobile-panel { position: absolute; top: calc(100% + var(--tdr-banner-height)); left: 0; right: 0; padding: 8px 16px; background: white; border-bottom: 1px solid #cbd5e1; box-shadow: 0 8px 16px #0f172a1a; max-height: calc(100dvh - 72px - var(--tdr-banner-height)); overflow-y: auto; }
+.tdr-mobile-panel nav { display: flex; flex-direction: column; }
+.tdr-verification-banner { position: absolute; top: 100%; left: 0; width: 100%; border-bottom: 1px solid #fcd34d; background: #fffbeb; padding: 8px 16px; text-align: center; color: #1e293b; font-size: .875rem; }
+.tdr-session { min-width: 130px; text-align: center; }
+.tdr-session button, .tdr-logout-error button, .tdr-relation-error button { min-height: 44px; padding: 8px; text-decoration: underline; font-weight: 600; }
+.tdr-logout-error, .tdr-relation-error { padding: 4px 16px; color: #991b1b; background: white; }
+@media (max-width: 1024px) {
+  .tdr-header-row { padding: 8px 16px; gap: 12px; }
+  .tdr-header-left, .tdr-header-right { gap: 12px; }
+  .tdr-desktop-nav { display: none; }
+  .tdr-header .tdr-mobile-toggle { display: inline-flex !important; align-items: center; justify-content: center; min-width: 44px; height: 44px; border-radius: 8px; }
+  .tdr-account-trigger .font-label { display: none; }
+}
+@media (max-width: 400px) {
+  .tdr-header-row { padding: 8px; gap: 4px; }
+  .tdr-header-left, .tdr-header-right { gap: 4px; }
+  .tdr-logo img { width: 80px; height: auto; }
+  .tdr-guest { gap: 0; }
+  .tdr-guest a { padding: 12px 6px; }
+  .tdr-session { min-width: 90px; font-size: .75rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tdr-header *, [data-role='dropdown-portal']:has(.tdr-account-overlay) { transition: none; animation: none; }
+}

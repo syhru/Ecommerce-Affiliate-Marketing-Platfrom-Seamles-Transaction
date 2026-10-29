@@ -1,131 +1,167 @@
 'use client';
 
-import { Button } from '@/components/ui/button';
-import { apiGet, apiPost } from '@/src/lib/api';
+import { apiPost } from '@/src/lib/api';
 import { logout, resendEmailVerification } from '@/src/lib/auth';
-import { LogOut, Menu, ShoppingCart, User as UserIcon } from 'lucide-react';
+import { useUserStore } from '@/src/stores/useUserStore';
+import { Column, NavIcon, Option, Row, UserMenu } from '@once-ui-system/core';
+import { LayoutProvider } from '@once-ui-system/core/next';
+import { ShoppingCart } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-
-import { useUserStore } from '@/src/stores/useUserStore';
-import type { User } from '@/src/types/user';
-
-type CartItem = {
-  quantity?: number | string;
-};
+import './Navbar.scss';
 
 export function Navbar() {
-  const router = useRouter();
   const pathname = usePathname();
   const isAuthPage = pathname === '/login' || pathname === '/register';
-  const [isScrolled, setIsScrolled] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { user, setUser, fetchUser, clearUser, isLoading } = useUserStore();
+  const { user, authStatus, authError, isLoading, fetchUser } = useUserStore();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [accountEpoch, setAccountEpoch] = useState(0);
+  const [logoutBusy, setLogoutBusy] = useState(false);
+  const [logoutError, setLogoutError] = useState('');
   const [cartCount, setCartCount] = useState(0);
-  const [isHydrated, setIsHydrated] = useState(false); 
-  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [headerOffset, setHeaderOffset] = useState(8);
+
   const [isResendingVerification, setIsResendingVerification] = useState(false);
+  const mobileTrigger = useRef<HTMLDivElement>(null);
+  const accountTrigger = useRef<HTMLDivElement>(null);
+  const restoreFocus = useRef<'account' | 'mobile' | null>(null);
+  const header = useRef<HTMLElement>(null);
+  const banner = useRef<HTMLDivElement>(null);
+  const logoutPending = useRef(false);
+  const authenticated = authStatus === 'authenticated' && user !== null;
+  const superadmin = authenticated && user.role === 'superadmin';
+  const profile = authenticated ? user.affiliate_profile : undefined;
+  const activeAffiliate = authenticated && user.role === 'affiliate' && profile?.status === 'active';
+
+  const closeMenus = () => {
+    if (mobileOpen) restoreFocus.current = 'mobile';
+    else if (accountTrigger.current?.getAttribute('aria-expanded') === 'true') restoreFocus.current = 'account';
+    setMobileOpen(false);
+    setAccountEpoch(value => value + 1);
+  };
 
   useEffect(() => {
-    setIsHydrated(true);
-    if (typeof window !== 'undefined') {
-      setIsAuthReady(true);
-    }
-  }, []);
+    const target = restoreFocus.current;
+    restoreFocus.current = null;
+    if (!target) return;
+    const preferred = target === 'account' ? accountTrigger.current : mobileTrigger.current;
+    const fallback = accountTrigger.current ?? header.current?.querySelector<HTMLAnchorElement>('.tdr-logo');
+    const visible = (element: HTMLElement | null | undefined) => element && element.getClientRects().length > 0;
+    if (visible(preferred)) preferred?.focus();
+    else if (visible(fallback)) fallback?.focus();
+    else header.current?.querySelector<HTMLAnchorElement>('.tdr-logo')?.focus();
+  }, [accountEpoch, mobileOpen]);
 
   useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 20);
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  useEffect(() => {
-    // Check Auth - SWR Pattern managed by Zustand
-    if (typeof window !== 'undefined') {
-      const hasToken = document.cookie.split(';').some(c => c.trim().startsWith('auth_token='));
-      if (hasToken) {
-        fetchUser();
-      } else {
-        // Tidak ada token (mis. session cookie terhapus setelah browser ditutup):
-        // buang user yang masih ter-cache di localStorage agar UI tidak salah
-        // menampilkan kondisi "masih login".
-        clearUser();
-        try { localStorage.removeItem('auth_user_storage'); } catch {}
-      }
-    }
-  }, [fetchUser, clearUser]);
-
-  // Polling: re-fetch user data every 30s to detect role changes by admin
-  useEffect(() => {
-    const hasToken = () => document.cookie.split(';').some(c => c.trim().startsWith('auth_token='));
-    if (!hasToken()) return;
-
-    const interval = setInterval(() => {
-      if (hasToken() && !document.hidden) {
-        fetchUser();
-      }
-    }, 30_000);
-
-    // Also re-fetch when tab becomes visible again
-    const handleVisibility = () => {
-      if (!document.hidden && hasToken()) {
-        fetchUser();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-
+    void fetchUser();
+    const refresh = () => { if (!document.hidden) void fetchUser(); };
+    const interval = window.setInterval(refresh, 30_000);
+    document.addEventListener('visibilitychange', refresh);
     return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibility);
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refresh);
     };
   }, [fetchUser]);
 
   useEffect(() => {
     const updateCartCount = () => {
+      let total = 0;
       try {
-        if (typeof window !== 'undefined') {
-          const cart = JSON.parse(localStorage.getItem('tdr_cart') || '[]');
-          if (Array.isArray(cart)) {
-            const totalQty = cart.reduce((acc: number, item: CartItem) => {
-              const q = parseInt(String(item.quantity ?? 1), 10);
-              return acc + (isNaN(q) ? 1 : q);
-            }, 0);
-            setCartCount(totalQty);
-          } else {
-            setCartCount(0);
+        const cart: unknown = JSON.parse(localStorage.getItem('tdr_cart') || '[]');
+        if (Array.isArray(cart)) {
+          for (const item of cart) {
+            if (!item || typeof item !== 'object') continue;
+            const raw = item.quantity ?? 1;
+            const quantity = typeof raw === 'number' || typeof raw === 'string' ? Number(raw) : NaN;
+            if (Number.isFinite(quantity) && quantity >= 0 && Number.isFinite(total + quantity)) total += quantity;
           }
         }
-      } catch { }
+      } catch { /* Unreadable cart is displayed as empty, never rewritten. */ }
+      setCartCount(total);
     };
-    
     updateCartCount();
     window.addEventListener('cart_updated', updateCartCount);
-    return () => window.removeEventListener('cart_updated', updateCartCount);
+    window.addEventListener('storage', updateCartCount);
+    return () => {
+      window.removeEventListener('cart_updated', updateCartCount);
+      window.removeEventListener('storage', updateCartCount);
+    };
   }, []);
 
-  // Buka Filament Admin Panel via SSO bridge (tukar token API jadi web session).
+  useEffect(() => {
+    const resize = () => {
+      const focused = document.activeElement;
+      if (focused?.closest('.tdr-account-overlay') || focused === accountTrigger.current) restoreFocus.current = 'account';
+      else if (focused?.closest('#tdr-mobile-panel') || focused === mobileTrigger.current) restoreFocus.current = 'mobile';
+      setMobileOpen(false);
+      // UserMenu owns open state; a new instance closes its internal portal and ScrollLock.
+      setAccountEpoch(value => value + 1);
+    };
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const outside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !header.current?.contains(event.target)) setMobileOpen(false);
+    };
+    document.addEventListener('pointerdown', outside);
+    return () => document.removeEventListener('pointerdown', outside);
+  }, [mobileOpen]);
+
+  useEffect(() => {
+    const element = header.current;
+    if (!element) return;
+    const update = () => {
+      const bannerHeight = banner.current?.getBoundingClientRect().height ?? 0;
+      element.style.setProperty('--tdr-banner-height', `${bannerHeight}px`);
+
+      // Existing callers already reserve 64px; reserve only the measured difference.
+      setHeaderOffset(Math.max(0, element.getBoundingClientRect().height + bannerHeight - 64));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    if (banner.current) observer.observe(banner.current);
+    return () => observer.disconnect();
+  }, [authenticated, user?.email_verified]);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const link = document.getElementById('tdr-mobile-panel')?.querySelector('a');
+    link?.focus();
+  }, [mobileOpen]);
+
+  const handleLogout = async () => {
+    if (logoutPending.current) return;
+    logoutPending.current = true;
+    setLogoutBusy(true);
+    setLogoutError('');
+    try {
+      await logout();
+      toast.success('Berhasil logout.');
+      window.location.href = '/login';
+    } catch (error: unknown) {
+      setLogoutError(error instanceof Error ? error.message : 'Keluar gagal. Silakan coba lagi.');
+      toast.error('Belum berhasil keluar. Silakan coba lagi.');
+    } finally {
+      logoutPending.current = false;
+      setLogoutBusy(false);
+    }
+  };
+
   const handleOpenAdminPanel = async () => {
-    setIsMobileMenuOpen(false);
+    closeMenus();
     try {
       const sso = await apiPost<{ url: string }>('/admin/filament-sso', {});
       window.location.href = sso.url;
     } catch {
-      // Fallback aman: arahkan ke Filament (akan meminta login manual).
       window.location.href = process.env.NEXT_PUBLIC_FILAMENT_ADMIN_URL ?? 'http://localhost:8000/admin';
     }
-  };
-
-  const handleLogout = async () => {
-    await logout();
-    toast.success('Berhasil logout.');
-    
-    // 4. Hard Redirect (memerintahkan browser mereload bersih memutus routing NextJS)
-    window.location.href = '/login';
   };
 
   const handleResendVerification = async () => {
@@ -139,189 +175,94 @@ export function Navbar() {
     }
   };
 
-  const handleJadiAffiliateClick = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsMobileMenuOpen(false); // Close mobile menu if open
-    
-    let targetPath = '/affiliate/register';
-
-    try {
-      // Selalu fetch terbaru untuk memastikan status real-time
-      const res = await apiGet<{ data?: User; user?: User }>('/user');
-      const apiUser = res.data ?? res.user;
-      
-      if (apiUser) {
-        if (JSON.stringify(apiUser) !== JSON.stringify(user)) {
-           setUser(apiUser);
-        }
-        
-        if (apiUser.role === 'affiliate' && apiUser.affiliate_profile?.status === 'pending') {
-          targetPath = '/affiliate/pending';
-        }
-      }
-    } catch {
-      // fallback jika gagal fetch
-      if (user?.role === 'affiliate' && user?.affiliate_profile?.status === 'pending') {
-         targetPath = '/affiliate/pending';
-      }
-    }
-
-    if (window.location.pathname !== targetPath) {
-      router.push(targetPath);
-    }
-  };
-
-  if (!isHydrated) return <div className="h-16 w-full bg-white shadow-sm border-b border-slate-100" />;
-
-  const isUserLoaded = isHydrated && user !== null;
-  const isGuest = isHydrated && user === null;
-  const isPending = isUserLoaded && user?.affiliate_profile?.status === 'pending';
-  const isRejected = isUserLoaded && user?.affiliate_profile?.status === 'rejected';
-  const isInactive = isUserLoaded && user?.affiliate_profile?.status === 'inactive';
-  const isAffiliate = isUserLoaded && user?.role === 'affiliate' && user?.affiliate_profile?.status === 'active';
-  const isVerified = isUserLoaded && user.email_verified;
-  const isStandardUser = isUserLoaded && ((user?.role as string) === 'user' || user?.role === 'customer') && !isPending && !isAffiliate && !isRejected && !isInactive;
-
-  const navBaseClasses = "fixed top-0 inset-x-0 z-50 transition-all duration-300 border-b";
-  const navScrolledClasses = "bg-white/80 backdrop-blur-md border-slate-200 shadow-sm py-3";
-  const navUnscrolledClasses = isAuthPage ? "bg-white border-slate-200 py-4 shadow-sm" : "bg-transparent border-transparent py-5";
+  const navItems = [{ label: 'Beranda', href: '/' }, { label: 'Katalog Produk', href: '/shop' }];
+  if (authenticated && !superadmin) {
+    if (profile === null && user.role === 'customer') navItems.push({ label: 'Jadi Affiliate', href: '/affiliate/register' });
+    else if (profile && ['pending', 'rejected', 'inactive'].includes(profile.status)) navItems.push({ label: 'Status Affiliate', href: `/affiliate/${profile.status}` });
+  }
+  const isActive = (href: string) => href === '/' ? pathname === '/' :
+    href === '/shop' ? pathname === '/shop' || pathname.startsWith('/products/') :
+      pathname === href || pathname.startsWith(`${href}/`);
+  const navigation = () => navItems.map(item => (
+    <Link key={item.href} href={item.href} prefetch={false} onClick={closeMenus}
+      aria-current={isActive(item.href) ? 'page' : undefined}>{item.label}</Link>
+  ));
+  const maskedEmail = authenticated ? user.email : '';
+  const initials = authenticated ? user.name.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase() : '';
+  const accountLink = (label: string, href: string) => (
+    <Option key={href} label={label} value={href} href={href} onLinkClick={closeMenus}
+      selected={isActive(href)} aria-current={isActive(href) ? 'page' : undefined} />
+  );
 
   return (
-    <nav className={`${navBaseClasses} ${isScrolled ? navScrolledClasses : navUnscrolledClasses}`}>
-      <div className="max-w-7xl mx-auto px-4 md:px-8 flex items-center justify-between">
-        {/* Logo */}
-        <Link href="/" className="flex items-center gap-2 group">
-          <Image 
-            src="/assets/TDR-logo.svg" 
-            alt="TDR HPZ Logo" 
-            width={120} 
-            height={40} 
-            className="w-auto h-8 md:h-10 group-hover:scale-105 transition-transform"
-            priority
-          />
-        </Link>
-
-        {/* Desktop Menu */}
-        {!isAuthPage && (
-          <div className="hidden md:flex items-center gap-8">
-            <div className={`flex items-center gap-6 text-sm font-semibold transition-colors ${isScrolled ? 'text-slate-600' : 'text-slate-700'}`}>
-            <Link href="/" prefetch={true} scroll={false} className="hover:text-amber-500 transition-colors">Beranda</Link>
-            {user && isVerified && (
-              <Link href="/shop" prefetch={true} scroll={false} className="hover:text-amber-500 transition-colors">Katalog Produk</Link>
-            )}
-            {user && isVerified && user.role !== 'superadmin' && (
-              <Link href="/orders" prefetch={false} scroll={false} className="hover:text-amber-500 transition-colors">Histori</Link>
-            )}
-            {isVerified && isStandardUser && (
-              <Link href="/affiliate/register" prefetch={true} scroll={false} onClick={handleJadiAffiliateClick} className="hover:text-amber-500 transition-colors cursor-pointer">Jadi Affiliate</Link>
-            )}
-            {isVerified && isPending && (
-              <Link href="/affiliate/pending" prefetch={false} scroll={false} className="hover:text-amber-500 transition-colors">Jadi Affiliate</Link>
-            )}
-            {isVerified && isAffiliate && (
-              <Link href="/affiliate/dashboard" prefetch={false} scroll={false} className="hover:text-amber-500 transition-colors">Dashboard Affiliate</Link>
-            )}
-            {isVerified && isRejected && (
-              <Link href="/affiliate/rejected" prefetch={false} scroll={false} className="hover:text-amber-500 transition-colors">Daftar Affiliate</Link>
-            )}
-            {isVerified && isInactive && (
-              <Link href="/affiliate/inactive" prefetch={false} scroll={false} className="hover:text-amber-500 transition-colors">Status Affiliate</Link>
-            )}
-            {isVerified && user && user.role === 'superadmin' && (
-              <button type="button" onClick={handleOpenAdminPanel} className="hover:text-amber-500 transition-colors cursor-pointer">Admin Panel</button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-4">
-            {user ? (
-              <>
-                {isVerified && user.role !== 'superadmin' && (
-                  <Link href="/cart" prefetch={true} scroll={false} className={`relative p-2 rounded-full hover:bg-slate-100 transition-colors ${isScrolled ? 'text-slate-700' : 'text-slate-800'}`}>
-                    <ShoppingCart className="w-5 h-5" />
-                    {cartCount > 0 && (
-                      <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-white">
-                        {cartCount}
-                      </span>
-                    )}
-                  </Link>
-                )}
-                <div className="flex items-center gap-3">
-                  <div className={`flex items-center gap-2 text-sm font-semibold ${isScrolled ? 'text-slate-700' : 'text-slate-800'}`}>
-                    <UserIcon className="w-4 h-4" /> {user.name}
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={handleLogout} className="text-slate-500 hover:text-red-500 hover:bg-red-50">
-                    <LogOut className="w-4 h-4" />
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <>
-                <Button variant="ghost" className={`font-semibold hover:bg-slate-100 ${isScrolled ? 'text-slate-700' : 'text-slate-800'}`} onClick={() => router.push('/login')}>
-                  Masuk
-                </Button>
-                <Button className="font-bold bg-amber-500 hover:bg-amber-400 text-slate-900 rounded-full shadow-md px-6" onClick={() => router.push('/register')}>
-                  Daftar
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
-        )}
-
-        {user && !user.email_verified && !isAuthPage && (
-          <div className="absolute left-0 top-full w-full border-b border-amber-300 bg-amber-50 px-4 py-2 text-center text-sm text-slate-800">
-            <span>Email Anda belum diverifikasi. Fitur transaksi belum dapat digunakan.</span>{' '}
-            <button
-              type="button"
-              onClick={handleResendVerification}
-              disabled={isResendingVerification}
-              className="min-h-11 px-2 font-bold text-amber-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 disabled:opacity-60"
-            >
-              {isResendingVerification ? 'Mengirim...' : 'Kirim ulang verifikasi'}
-            </button>
-          </div>
-        )}
-
-        {/* Mobile Menu Toggle */}
-        {!isAuthPage && (
-          <button 
-          title='menu'
-            className="md:hidden p-2 text-slate-800 bg-white/50 backdrop-blur rounded-lg"
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          >
-            <Menu className="w-6 h-6" />
+    <LayoutProvider>
+      <header ref={header} className="tdr-header" onKeyDown={event => {
+        if (event.key === 'Escape' && mobileOpen) {
+          setMobileOpen(false);
+          mobileTrigger.current?.focus();
+        }
+      }}>
+        <Row className="tdr-header-row">
+          <Row className="tdr-header-left">
+            {!isAuthPage && <NavIcon ref={mobileTrigger} className="tdr-mobile-toggle" active={mobileOpen}
+              style={{ width: 44, height: 44, minWidth: 44, minHeight: 44, flexShrink: 0 }}
+              role="button" tabIndex={0} aria-label="Menu navigasi" aria-expanded={mobileOpen} aria-controls="tdr-mobile-panel"
+              onKeyDown={event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  setAccountEpoch(value => value + 1);
+                  setMobileOpen(value => !value);
+                }
+              }}
+              onClick={() => { setAccountEpoch(value => value + 1); setMobileOpen(value => !value); }} />}
+            <Link href="/" className="tdr-logo" aria-label="TDR Beranda" onClick={closeMenus}>
+              <Image src="/assets/TDR-logo.svg" alt="TDR HPZ Logo" width={120} height={40} priority />
+            </Link>
+            {!isAuthPage && <nav className="tdr-desktop-nav" aria-label="Navigasi utama">{navigation()}</nav>}
+          </Row>
+          {!isAuthPage && <Row className="tdr-header-right">
+            {!superadmin && <Link href="/cart" className="tdr-cart" prefetch={false} onClick={closeMenus}
+              aria-label={cartCount > 0 ? `Keranjang, ${cartCount} barang` : 'Keranjang'} aria-current={isActive('/cart') ? 'page' : undefined}>
+              <ShoppingCart aria-hidden="true" />
+              {cartCount > 0 && <span className="tdr-cart-badge" aria-hidden="true">{cartCount}</span>}
+            </Link>}
+            {authenticated ? <div className="tdr-account" onClickCapture={() => setMobileOpen(false)}
+              onKeyDownCapture={event => { if (event.key === 'Enter' || event.key === ' ') setMobileOpen(false); }}>
+              <UserMenu ref={accountTrigger} key={`${user.id}:${accountEpoch}:${pathname}`} className="tdr-account-trigger" placement="bottom-end"
+                aria-label={`Menu akun ${user.name}`} name={user.name} avatarProps={{ value: initials }}
+                dropdown={<Column className="tdr-account-overlay">
+                
+                  <div className="tdr-account-identity"><strong>{user.name}</strong><span>{maskedEmail}</span></div>
+                  {accountLink('Profil Saya', '/profile')}
+                  {!superadmin && accountLink('Histori Pesanan', '/orders')}
+                  {activeAffiliate && accountLink('Dashboard Affiliate', '/affiliate/dashboard')}
+                  {superadmin && user.email_verified && <Option label="Admin Panel" value="admin" onClick={handleOpenAdminPanel} />}
+                  <hr />
+                  <Option label={logoutBusy ? 'Keluar...' : 'Keluar'} value="logout" disabled={logoutBusy} aria-busy={logoutBusy} onClick={handleLogout} />
+                </Column>} />
+            </div> : authStatus === 'guest' ? <div className="tdr-guest">
+              <Link href="/login" onClick={closeMenus}>Masuk</Link><Link href="/register" className="tdr-register" onClick={closeMenus}>Daftar</Link>
+            </div> : <div className="tdr-session" aria-live="polite" aria-busy={isLoading}>
+              {isLoading ? 'Memuat akun...' : <button type="button" onClick={() => void fetchUser()}>Muat ulang akun</button>}
+            </div>}
+          </Row>}
+        </Row>
+        {logoutError && !isAuthPage && <div className="tdr-logout-error" role="alert">Belum berhasil keluar. <button type="button" onClick={handleLogout} disabled={logoutBusy}>Coba lagi</button></div>}
+        {authenticated && authError && !isAuthPage && !isLoading && <div className="tdr-relation-error" role="status">
+          {authError} <button type="button" onClick={() => void fetchUser()}>Muat ulang</button>
+        </div>}
+        {authenticated && !user.email_verified && !isAuthPage && <div ref={banner} className="tdr-verification-banner">
+          <span>Email Anda belum diverifikasi. Fitur transaksi belum dapat digunakan.</span>{' '}
+          <button type="button" onClick={handleResendVerification} disabled={isResendingVerification}
+            className="min-h-11 px-2 font-bold text-amber-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 disabled:opacity-60">
+            {isResendingVerification ? 'Mengirim...' : 'Kirim ulang verifikasi'}
           </button>
-        )}
-      </div>
-
-      {/* Mobile Menu Wrapper */}
-      {!isAuthPage && isMobileMenuOpen && (
-        <div className="md:hidden absolute top-full left-0 w-full bg-white border-b border-slate-200 shadow-xl py-4 px-4 flex flex-col gap-4">
-          <Link href="/" prefetch={true} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Beranda</Link>
-          {user && isVerified && <Link href="/shop" prefetch={true} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Katalog Produk</Link>}
-          {user && isVerified && user.role !== 'superadmin' && <Link href="/orders" prefetch={false} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Histori</Link>}
-          {isVerified && isStandardUser && <Link href="/affiliate/register" prefetch={true} scroll={false} onClick={handleJadiAffiliateClick} className="text-slate-700 font-semibold px-2 py-1 cursor-pointer">Jadi Affiliate</Link>}
-          {isVerified && isPending && <Link href="/affiliate/pending" prefetch={false} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Jadi Affiliate</Link>}
-          {isVerified && isAffiliate && <Link href="/affiliate/dashboard" prefetch={false} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Dashboard Affiliate</Link>}
-          {isVerified && isRejected && <Link href="/affiliate/rejected" prefetch={false} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Daftar Affiliate</Link>}
-          {isVerified && isInactive && <Link href="/affiliate/inactive" prefetch={false} scroll={false} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 font-semibold px-2 py-1">Status Affiliate</Link>}
-          {isVerified && user && user.role === 'superadmin' && <button type="button" onClick={handleOpenAdminPanel} className="text-slate-700 font-semibold px-2 py-1 text-left cursor-pointer">Admin Panel</button>}
-          
-          <hr className="border-slate-100 my-2" />
-          
-          {user ? (
-            <div className="flex items-center justify-between px-2">
-              <span className="text-sm font-semibold text-slate-800 flex items-center gap-2"><UserIcon className="w-4 h-4"/> {user.name}</span>
-              <Button size="sm" variant="destructive" onClick={handleLogout}>Logout</Button>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <Button variant="outline" className="w-full" onClick={() => router.push('/login')}>Masuk</Button>
-              <Button className="w-full bg-amber-500 text-slate-900" onClick={() => router.push('/register')}>Daftar</Button>
-            </div>
-          )}
-        </div>
-      )}
-    </nav>
+        </div>}
+        {!isAuthPage && mobileOpen && <Column id="tdr-mobile-panel" className="tdr-mobile-panel">
+          <nav aria-label="Navigasi HP">{navigation()}</nav>
+        </Column>}
+      </header>
+      <div aria-hidden="true" style={{ height: headerOffset, flexShrink: 0 }} />
+    </LayoutProvider>
   );
 }

@@ -9,7 +9,7 @@
 
 import { apiPost } from '@/src/lib/api';
 import { clearAuthCookie, getTokenFromCookie, setAuthCookie } from '@/src/lib/auth-cookie';
-import { useUserStore } from '@/src/stores/useUserStore';
+import { suspendUserValidation, useUserStore } from '@/src/stores/useUserStore';
 import type { LoginCredentials, LoginResponse, RegisterPayload, RegisterResponse } from '@/src/types/user';
 
 /**
@@ -44,14 +44,23 @@ export const clearLocalAuth = (): void => {
   try { sessionStorage.setItem('tdr_is_logging_out', 'true'); } catch {}
 };
 
-export const logout = async (): Promise<void> => {
-  try {
+let logoutInFlight: Promise<void> | null = null;
+
+export const logout = (): Promise<void> => {
+  if (logoutInFlight) return logoutInFlight;
+  const credential = getTokenFromCookie();
+  const resumeUserValidation = suspendUserValidation();
+  logoutInFlight = (async () => {
     await apiPost('/logout', {});
-  } catch {
-    // Network failure must not prevent signing out on this browser.
-  } finally {
+    if (credential !== getTokenFromCookie()) {
+      throw new Error('Session changed while signing out. Please try again.');
+    }
     clearLocalAuth();
-  }
+  })().finally(() => {
+    resumeUserValidation();
+    logoutInFlight = null;
+  });
+  return logoutInFlight;
 };
 
 /**
